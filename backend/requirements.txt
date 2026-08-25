@@ -1,0 +1,22 @@
+# TankVitals - dependências do backend (BE-01)
+# Versões fixas de propósito: o ambiente precisa ser igual em todas as máquinas.
+# Instalar com:  pip install -r requirements.txt
+
+# --- API HTTP + WebSocket ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# --- MQTT ---
+paho-mqtt==2.1.0
+
+# --- Banco de série temporal ---
+influxdb-client==1.48.0
+
+# --- Configuração e validação ---
+pydantic==2.10.5
+pydantic-settings==2.7.1
+python-dotenv==1.0.1
+
+# --- Testes (BE-09) ---
+pytest==8.3.4
+httpx==0.28.1
