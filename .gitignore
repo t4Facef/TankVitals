@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Node / Vite
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+
+# Ambiente
+.env
+.env.local
+*.log
+
+# Dados locais (InfluxDB / Mosquitto em volumes locais)
+infra/data/
+infra/mosquitto/data/
+infra/mosquitto/log/
+
+# Editores / SO
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Build de firmware
+.pio/
+build/
