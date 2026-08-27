@@ -122,7 +122,7 @@ TankVitals/
 │  ├─ ARQUITETURA.md               <- contratos: MQTT, JSON, InfluxDB, API
 │  ├─ TAREFAS.md                   <- backlog com passo a passo e aceite
 │  └─ PADROES-DESENVOLVIMENTO.md   <- branch, commit, PR e receitas de Git
-├─ firmware/wokwi/                 <- FW-01..05: diagram.json + sketch.ino
+├─ firmware/wokwi/                 <- circuito e sketch do ESP32 (FW-01..05)
 ├─ backend/
 │  ├─ app/                         <- BE-01..08: config, models, alerts,
 │  │                                  influx_repo, mqtt_ingestor, api, main
@@ -148,7 +148,8 @@ TankVitals/
 | Projeto Python criado (dependências instaladas) | ✅ `pytest` rodando |
 | Arquivos de Docker e Mosquitto | ✅ criados, faltam os `TODO` da INFRA-01 |
 | Infraestrutura no ar (Mosquitto + InfluxDB) | ⬜ INFRA-01..05 |
-| Firmware ESP32 / Wokwi | ⬜ FW-01..05 |
+| Circuito no Wokwi e leitura dos 4 sensores | ✅ FW-01 e FW-02 |
+| Firmware: Wi-Fi, MQTT e publicação | ⬜ FW-03..05 |
 | Backend Python | ⬜ BE-01..09 |
 | Frontend Vue 3 | ⬜ FE-01..08 |
 

@@ -1,20 +1,24 @@
 /*
  * ============================================================================
- *  TankVitals - Teste de fiacao
+ *  TankVitals - Firmware ESP32 (Wokwi)
+ *  Monitoramento de tanque de aquicultura / aquario
+ *  UniFACEF 2026 - Web II - 1o Bimestre
  * ============================================================================
  *
- *  Serve so para conferir se o circuito do diagram.json esta ligado certo:
- *  le os 4 sensores, imprime no monitor serial e pisca o LED.
+ *  Etapa atual: FW-02 - leitura dos sensores.
+ *  Le as 4 grandezas e imprime no monitor serial. Wi-Fi, NTP, MQTT e a
+ *  publicacao da telemetria entram nas etapas FW-03 a FW-05 do backlog
+ *  (docs/TAREFAS.md).
  *
- *  Nao tem Wi-Fi, nao tem MQTT e nao publica nada. O firmware de verdade e a
- *  sequencia FW-02 -> FW-05 do backlog (docs/TAREFAS.md).
+ *  Sensores (pinos conforme diagram.json):
+ *    - DS18B20        -> temperatura da agua (GPIO 4, 1-Wire + pull-up 4.7k)
+ *    - Potenciometro  -> sonda de pH (GPIO 34, ADC1)
+ *    - HC-SR04        -> nivel da agua (TRIG 5 / ECHO 18)
+ *    - LDR (modulo)   -> turbidez (GPIO 35, ADC1)
+ *    - LED vermelho   -> alerta local (GPIO 19 + resistor 220 ohm)
  *
- *  Como usar:
- *    1. projeto no wokwi.com criado como ESP32 -> Arduino
- *    2. cole o diagram.json da pasta acima
- *    3. cole este arquivo no sketch.ino
- *    4. adicione as bibliotecas do libraries.txt desta pasta
- *    5. rode e confira a saida no monitor serial
+ *  O projeto no Wokwi precisa ser do tipo ESP32 -> Arduino, com as
+ *  bibliotecas listadas no libraries.txt.
  * ============================================================================
  */
 
@@ -131,8 +135,8 @@ void loop() {
   imprimir("turbidez", turbidez, " NTU", 1);
   Serial.println();
 
-  // Alterna o LED a cada leitura: se ele ficar aceso direto, o resistor de
-  // 220 ohm esta ligado no 3V3 em vez do GPIO 19.
+  // Por enquanto o LED so alterna a cada leitura, confirmando que o GPIO 19
+  // controla ele. Na FW-05 ele passa a acender por faixa fora do normal.
   ledAceso = !ledAceso;
   digitalWrite(PIN_LED, ledAceso ? HIGH : LOW);
 

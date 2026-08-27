@@ -302,7 +302,7 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
 > Meta da frente: o ESP32 simulado lê 4 sensores e publica JSON válido no MQTT.
 > **Peso: 1,5 pts (dispositivo) + parte de 2,0 pts (MQTT).**
 
-### FW-01 — Montar o circuito no Wokwi
+### FW-01 — Montar o circuito no Wokwi ✅
 
 **Objetivo:** ter o projeto no Wokwi com todas as peças ligadas corretamente.
 **Depende de:** nada.
@@ -351,25 +351,24 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
 
 3. Copie o conteúdo da aba `diagram.json` do Wokwi para
    `firmware/wokwi/diagram.json` no repositório.
-4. Confira a fiação antes de escrever o firmware: cole
-   `firmware/wokwi/teste-fiacao/sketch.ino` no projeto e rode. Ele lê os 4
-   sensores, imprime no monitor serial e pisca o LED — sem Wi-Fi nem MQTT.
-   Mexendo no potenciômetro, na luz do LDR e na distância do HC-SR04, os
-   valores impressos têm que acompanhar.
+4. Confira a fiação antes de seguir: cole `firmware/wokwi/sketch.ino` no
+   projeto e rode. Ele lê os 4 sensores e imprime no monitor serial. Mexendo no
+   potenciômetro, na luz do LDR e na distância do HC-SR04, os valores impressos
+   têm que acompanhar.
 5. Coloque o link público do projeto Wokwi no `README.md`.
 
 **Critério de aceite**
 
-- [ ] As 7 peças (mais a placa) estão no circuito e ligadas conforme a tabela.
-- [ ] O LED só acende quando o firmware manda, não fica aceso sozinho.
-- [ ] `diagram.json` versionado e idêntico ao do Wokwi.
-- [ ] A simulação inicia sem aviso de fiação no console do Wokwi.
+- [x] As 7 peças (mais a placa) estão no circuito e ligadas conforme a tabela.
+- [x] O LED só acende quando o firmware manda, não fica aceso sozinho.
+- [x] `diagram.json` versionado e idêntico ao do Wokwi.
+- [x] A simulação inicia sem aviso de fiação no console do Wokwi.
 
 **Peso:** 1,5 pts (dispositivo IoT).
 
 ---
 
-### FW-02 — Leitura dos sensores
+### FW-02 — Leitura dos sensores ✅
 
 **Objetivo:** as 4 grandezas sendo lidas e impressas no monitor serial.
 **Depende de:** FW-01.
@@ -378,9 +377,9 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
 
 **Passo a passo**
 
-1. No Wokwi, adicione as bibliotecas (aba **Library Manager**):
-   `OneWire`, `DallasTemperature`, `PubSubClient`, `ArduinoJson`. Isso gera o
-   `libraries.txt` — versione esse arquivo também.
+1. No Wokwi, adicione as bibliotecas (aba **Library Manager**): `OneWire` e
+   `DallasTemperature` agora; `PubSubClient` e `ArduinoJson` entram na FW-03 e
+   na FW-04. Isso gera o `libraries.txt` — versione esse arquivo também.
 2. No `setup()`: `Serial.begin(115200)`, `pinMode` do TRIG (saída), ECHO
    (entrada) e LED (saída), `analogReadResolution(12)`,
    `analogSetAttenuation(ADC_11db)` e `dallas.begin()`.
@@ -400,10 +399,11 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
 
 **Critério de aceite**
 
-- [ ] Monitor serial mostra as 4 grandezas a cada 5 s.
-- [ ] Mexer no potenciômetro muda o pH; mexer na luz do LDR muda a turbidez.
-- [ ] Mudar a distância do HC-SR04 muda o nível, sempre entre 0 e 100 %.
-- [ ] Sensor removido do circuito devolve `NAN` em vez de travar o firmware.
+- [x] Monitor serial mostra as 4 grandezas (hoje a cada 1 s; a FW-04 troca o
+      `delay()` por `millis()` e fixa o intervalo em 5 s).
+- [x] Mexer no potenciômetro muda o pH; mexer na luz do LDR muda a turbidez.
+- [x] Mudar a distância do HC-SR04 muda o nível, sempre entre 0 e 100 %.
+- [x] Sensor removido do circuito devolve `NAN` em vez de travar o firmware.
 
 **Ref.:** ARQUITETURA §3. **Peso:** parte de 1,5 pts.
 
