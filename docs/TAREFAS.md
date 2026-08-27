@@ -312,6 +312,11 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
 **Passo a passo**
 
 1. Crie um projeto novo em [wokwi.com](https://wokwi.com) → **ESP32 → Arduino**.
+   Confira que é Arduino mesmo: se o projeto for criado como ESP-IDF, o
+   `diagram.json` fica com `"builder": "esp-idf"` na placa e as bibliotecas do
+   `libraries.txt` não funcionam.
+   A placa usada é a `board-esp32-devkit-c-v4`, em que os pinos são nomeados
+   pelo número do GPIO (`esp:4`, `esp:19`, `esp:34`...).
 2. Adicione as peças pelo botão **+** e faça as ligações desta tabela:
 
    | Peça (nome no Wokwi) | Pino da peça | Pino do ESP32 | Observação |
@@ -319,7 +324,7 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
    | `DS18B20` (temperatura) | VCC | 3V3 | |
    | | GND | GND | |
    | | DQ | **D4** | |
-   | `Resistor` 4.7 kΩ | entre DQ e 3V3 | — | *pull-up* do barramento 1-Wire |
+   | `Resistor` **4,7 kΩ** | um lado no DQ do DS18B20 | outro lado no 3V3 | *pull-up* do barramento 1-Wire |
    | `HC-SR04` (ultrassônico) | VCC | 3V3 | |
    | | TRIG | **D5** | |
    | | ECHO | **D18** | |
@@ -330,8 +335,14 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
    | `Photoresistor (LDR)` (faz o papel do sensor de turbidez) | VCC | 3V3 | |
    | | GND | GND | |
    | | AO | **D35** | a saída digital DO não é usada |
-   | `LED` vermelho (alerta local) | ânodo (A) | resistor 220 Ω → **D19** | |
+   | `Resistor` **220 Ω** | um lado no **GPIO 19** | outro lado no ânodo (A) do LED | limita a corrente do LED |
+   | `LED` vermelho (alerta local) | ânodo (A) | resistor 220 Ω → **GPIO 19** | |
    | | cátodo (C) | GND | |
+
+   > São **dois** resistores diferentes, com funções diferentes: o de 4,7 kΩ é o
+   > pull-up do DS18B20 e o de 220 Ω é do LED. Usar um só, ligando o LED direto
+   > no 3V3, deixa o LED aceso o tempo todo e o GPIO 19 sem controlar nada — e
+   > ainda deixa o sensor de temperatura sem pull-up.
 
    > **Por que D34 e D35 e não outro pino qualquer:** o ESP32 tem dois
    > conversores analógicos e o **ADC2 é usado pelo rádio Wi-Fi**. Ler ADC2 com
@@ -340,11 +351,17 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
 
 3. Copie o conteúdo da aba `diagram.json` do Wokwi para
    `firmware/wokwi/diagram.json` no repositório.
-4. Coloque o link público do projeto Wokwi no `README.md`.
+4. Confira a fiação antes de escrever o firmware: cole
+   `firmware/wokwi/teste-fiacao/sketch.ino` no projeto e rode. Ele lê os 4
+   sensores, imprime no monitor serial e pisca o LED — sem Wi-Fi nem MQTT.
+   Mexendo no potenciômetro, na luz do LDR e na distância do HC-SR04, os
+   valores impressos têm que acompanhar.
+5. Coloque o link público do projeto Wokwi no `README.md`.
 
 **Critério de aceite**
 
-- [ ] As 6 peças estão no circuito e ligadas conforme a tabela.
+- [ ] As 7 peças (mais a placa) estão no circuito e ligadas conforme a tabela.
+- [ ] O LED só acende quando o firmware manda, não fica aceso sozinho.
 - [ ] `diagram.json` versionado e idêntico ao do Wokwi.
 - [ ] A simulação inicia sem aviso de fiação no console do Wokwi.
 
