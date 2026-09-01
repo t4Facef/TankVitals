@@ -16,7 +16,7 @@ precisar mudar algo, muda aqui primeiro e avisa a equipe.
       v
 [2] MQTT publish  ->  tankvitals/tanque-01/telemetry
       v
-[3] Mosquitto (broker na VM, ou local com bridge - ver §7)
+[3] Mosquitto local (importa do broker publico por bridge - ver §7)
       v
 [4] Ingestor Python (paho-mqtt)
       |  valida o JSON (Pydantic), descarta payload malformado
@@ -47,23 +47,26 @@ Responsabilidade de cada peça:
 
 ### 2.1 Tópicos
 
+O prefixo de tópico do grupo é **`tankvitals-unifacef-g3`** (`<PREFIXO>` nas
+tabelas abaixo).
+
 | Tópico | Direção | QoS | Retained | Conteúdo |
 | --- | --- | --- | --- | --- |
-| `tankvitals/<tank_id>/telemetry` | ESP32 → backend | 0 | não | JSON de leitura (§3) |
-| `tankvitals/<tank_id>/status` | ESP32 → backend | 1 | **sim** | `online` / `offline` (texto puro) |
-| `tankvitals/<tank_id>/cmd` | backend → ESP32 | 0 | não | JSON de comando (§2.3) |
+| `<PREFIXO>/<tank_id>/telemetry` | ESP32 → backend | 0 | não | JSON de leitura (§3) |
+| `<PREFIXO>/<tank_id>/status` | ESP32 → backend | 1 | **sim** | `online` / `offline` (texto puro) |
+| `<PREFIXO>/<tank_id>/cmd` | backend → ESP32 | 0 | não | JSON de comando (§2.3) |
 
 - `<tank_id>` padrão: `tanque-01`.
-- O backend assina com curinga: `tankvitals/+/telemetry` e `tankvitals/+/status`.
+- O backend assina com curinga: `<PREFIXO>/+/telemetry` e `<PREFIXO>/+/status`.
 - `status` usa **Last Will and Testament**: se o ESP32 cair sem avisar, o broker
   publica `offline` sozinho. É assim que o dashboard sabe que o dispositivo
   sumiu.
 
-> ⚠️ **Se cair no plano B** (broker público, §7 Opção B), qualquer pessoa no
-> mundo pode publicar em `tankvitals/#`. O prefixo do grupo para esse cenário é
-> **`tankvitals-unifacef-g3`**, e ele vai em três lugares: `sketch.ino`
-> (`TOPIC_PREFIX`), `.env` do backend (`MQTT_TOPIC_PREFIX`) e a linha `topic` da
-> bridge no `mosquitto.conf`. Ver tarefa INFRA-04.
+> ⚠️ **Por que o prefixo não é só `tankvitals`.** O ESP32 publica num broker
+> público (§7), que é aberto: com prefixo genérico, qualquer um publica lixo no
+> nosso tópico no meio da apresentação. O valor precisa ser idêntico em três
+> lugares — `sketch.ino` (`TOPIC_PREFIX`), `.env` (`MQTT_TOPIC_PREFIX`) e a
+> linha `topic` da bridge no `mosquitto.conf`. Ver INFRA-04.
 
 ### 2.2 Payload de telemetria
 
@@ -302,58 +305,39 @@ inválido), 404 (tanque sem dados) ou 503 (InfluxDB indisponível).
 
 ## 7. Conectividade Wokwi ↔ Mosquitto
 
-O ESP32 do Wokwi roda na nuvem e não alcança o `localhost` de ninguém. Ele
-precisa de um broker com endereço público.
+O ESP32 do Wokwi roda na nuvem e não alcança o `localhost` de ninguém. Como o
+projeto não tem servidor público, o caminho é o inverso: o dispositivo publica
+num broker público e o Mosquitto local **importa** o tópico por *bridge*.
 
-### Opção A — broker próprio na VM (padrão)
-
-```
-ESP32 (Wokwi) --publish--> mqtt.<dominio>:1883 (VM Oracle, always free)
-                                   ^
-                        subscribe  |
-                   backend Python (maquina local) --> InfluxDB --> Vue
-```
-
-Só o **Mosquitto** roda na VM; InfluxDB, backend e frontend continuam locais,
-porque todos fazem conexão *de saída* para o broker — nenhum deles precisa de
-porta aberta. A VM mais fraca do plano gratuito dá conta: o Mosquitto consome
-poucos MB de RAM.
-
-Exige **senha** no broker (`allow_anonymous false` + `password_file`): com a
-1883 aberta para a internet, broker anônimo é broker aberto para o mundo.
-
-Dois detalhes que costumam travar a configuração:
-
-- a VM da Oracle tem **dois firewalls empilhados** — a Security List da VCN e o
-  `iptables`/`firewalld` da própria instância. Abrir só um não funciona;
-- no Cloudflare, o registro DNS precisa ficar **cinza (DNS only)**. A nuvem
-  laranja só encaminha portas HTTP/HTTPS (80, 443, 8080, 8443...); TCP
-  arbitrário exige Spectrum, que é plano Enterprise. Pelo mesmo motivo, o
-  **Cloudflare Tunnel não resolve** — e o contorno de MQTT sobre WebSocket na
-  443 também não, porque a `PubSubClient` do ESP32 não fala WebSocket.
-
-Passo a passo em INFRA-03.
-
-### Opção B — broker público com bridge (plano B)
+### Caminho adotado — broker público com bridge
 
 ```
 ESP32 (Wokwi) --publish--> test.mosquitto.org:1883 --bridge--> Mosquitto local:1883 --> backend
 ```
 
 O `test.mosquitto.org` é uma instância pública do **próprio Mosquitto**. O
-`mosquitto.conf` local abre uma bridge com ele e importa o tópico, então o
-backend continua falando só com o broker local — a exigência da disciplina segue
-cumprida. O preço é depender de um serviço de terceiros e de um prefixo de
-tópico único, já que o broker é aberto a qualquer um. Passo a passo em INFRA-04.
+`mosquitto.conf` local abre a bridge e importa o tópico, então o backend
+continua falando só com o broker local — a exigência da disciplina segue
+cumprida, e nenhuma máquina da equipe precisa de porta aberta.
 
-### Opção C — túnel TCP (emergência)
+O preço é depender de um serviço de terceiros e de um prefixo de tópico único:
+o broker é aberto, qualquer um publica nele. O prefixo do grupo é
+`tankvitals-unifacef-g3` (§2.1).
+
+### Emergência — túnel TCP
 
 `ngrok tcp 1883` expõe o Mosquitto local e o host/porta gerados vão para
 `MQTT_HOST`/`MQTT_PORT` no `sketch.ino`. Funciona, mas o endereço muda a cada
 execução do ngrok — serve para destravar um teste, não para a apresentação.
 
-**Recomendação:** Opção A como padrão, com a Opção B configurada e testada como
-plano B para o dia da apresentação.
+### Descartado — broker próprio em VM
+
+A ideia original era rodar o Mosquitto numa VM gratuita da Oracle, em
+`mqtt.<dominio>:1883` com senha. Foi abandonada por custo de configuração:
+exige provisionar a instância, abrir a porta nos **dois** firewalls empilhados
+(Security List da VCN e `iptables` da própria instância) e manter o registro DNS
+fora do proxy do Cloudflare — a nuvem laranja só encaminha HTTP/HTTPS, e pelo
+mesmo motivo o Cloudflare Tunnel também não resolve para MQTT.
 
 ---
 
