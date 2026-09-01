@@ -1134,17 +1134,16 @@ ESP32 (Wokwi) --publish--> test.mosquitto.org:1883 --bridge--> Mosquitto local -
 3. Ensaie a demonstração do alerta: mexer no potenciômetro do Wokwi até o pH sair
    da faixa e mostrar o LED acendendo, o card virando vermelho e o ponto saindo
    da faixa no gráfico. **Esse é o momento que amarra a apresentação inteira.**
-4. Ensaie o que fazer se cair a internet, se a VM do broker cair (plano B da
-   INFRA-04) e
-   se o Wokwi travar (use o simulador da BE-09 como último recurso, avisando que
-   é ferramenta de desenvolvimento).
+4. Ensaie o que fazer se cair a internet ou se o `test.mosquitto.org` estiver
+   fora — nesse caso o simulador da BE-09 publica direto no broker local e
+   pula o trecho público inteiro. Avise que é ferramenta de desenvolvimento.
 
 **Critério de aceite**
 
 - [ ] Ambiente sobe do zero em menos de 5 minutos.
 - [ ] Os 6 elos da ARQUITETURA §10 validados na sequência.
 - [ ] Demonstração de alerta ensaiada e funcionando.
-- [ ] Plano B testado.
+- [ ] Caminho de emergência (simulador da BE-09) testado.
 
 **Peso:** protege os 10,0 pts.
 
@@ -1189,7 +1188,7 @@ tecnologia no código sem demonstrar funcionamento **não pontua**.
 | 1,0 | Definição do problema e proposta IoT | README explicando o problema real e como o sistema resolve | ENT-02 |
 | 2,0 | Frontend Vue 3 + TS + Vite | dashboard rodando, `strict` ligado, build limpo | FE-01..FE-08 |
 | 1,5 | Dispositivo IoT no Wokwi | circuito com 4 sensores publicando de verdade | FW-01..FW-05 |
-| 2,0 | MQTT + Mosquitto | broker local recebendo do ESP32; mostrar `mosquitto_sub` ao vivo | INFRA-01, 03, 05 / FW-03, FW-04 / BE-05 |
+| 2,0 | MQTT + Mosquitto | broker local recebendo do ESP32; mostrar `mosquitto_sub` ao vivo | INFRA-01, 04, 05 / FW-03, FW-04 / BE-05 |
 | 1,0 | Backend Python | log processando e validando; `/docs` da API | BE-01..BE-03, BE-05, BE-07 |
 | 1,5 | Persistência no InfluxDB | pontos visíveis no Data Explorer, com tags e fields certos | INFRA-02 / BE-04, BE-06 |
 | 1,0 | Dashboard com gráfico/indicador | gráfico histórico + 4 cards com dado real | FE-05, FE-06 |
