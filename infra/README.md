@@ -57,7 +57,7 @@ mosquitto_pub -h localhost -t '<SEU_PREFIXO>/tanque-01/telemetry' \
   -m '{"device_id":"teste","tank_id":"tanque-01","temperature_c":25.5}'
 ```
 
-Para validar a **bridge** (INFRA-03), publique no broker **público** e confirme
+Para validar a **bridge** do plano B (INFRA-04), publique no broker **público** e confirme
 que a mensagem aparece no terminal A:
 
 ```bash
@@ -78,24 +78,73 @@ curl -i -XPOST "http://localhost:8086/api/v2/write?org=unifacef&bucket=tankvital
 
 ---
 
-## Plano B: túnel TCP (INFRA-04)
+## Broker na VM Oracle (INFRA-03) — configuração padrão
 
-Se o `test.mosquitto.org` estiver instável no dia da apresentação:
+Só o **Mosquitto** roda na VM. InfluxDB, backend e frontend continuam na máquina
+local: todos fazem conexão *de saída* para o broker, então nenhum deles precisa
+de porta aberta.
+
+```
+ESP32 (Wokwi) --publish--> mqtt.<dominio>:1883 (VM Oracle)
+                                   ^
+                        subscribe  |
+                   backend Python (maquina local) --> InfluxDB --> Vue
+```
+
+**Abrir a porta 1883.** A VM da Oracle tem dois firewalls empilhados, e abrir só
+um não funciona — é aqui que quase todo mundo trava:
 
 ```bash
-ngrok tcp 1883
+# 1) console da Oracle: Networking -> VCN -> Security List -> Add Ingress Rule
+#    Source 0.0.0.0/0 | IP Protocol TCP | Destination Port Range 1883
+
+# 2) dentro da VM, por SSH:
+#    Ubuntu
+sudo iptables -I INPUT 6 -p tcp --dport 1883 -j ACCEPT
+sudo netfilter-persistent save
+
+#    Oracle Linux
+sudo firewall-cmd --permanent --add-port=1883/tcp && sudo firewall-cmd --reload
 ```
 
-Anote o host e a porta gerados (ex.: `0.tcp.sa.ngrok.io:14523`) e altere **duas
-linhas** no `firmware/wokwi/sketch.ino`:
+**DNS.** Crie um registro **A** `mqtt.<seu-dominio>` apontando para o IP público
+da VM. No Cloudflare o registro precisa ficar **cinza (DNS only)** — a nuvem
+laranja só encaminha portas HTTP/HTTPS e quebra o tráfego MQTT. Pelo mesmo
+motivo, **Cloudflare Tunnel não funciona** para MQTT: porta TCP arbitrária lá
+exige o Spectrum, que é plano Enterprise.
 
-```cpp
-#define MQTT_HOST "0.tcp.sa.ngrok.io"
-#define MQTT_PORT 14523
+**Senha.** Obrigatória, já que a porta fica aberta para a internet:
+
+```bash
+mosquitto_passwd -c /mosquitto/config/passwd tankvitals
 ```
 
-Depois recompile no Wokwi. **O endereço muda a cada execução do ngrok** — se
-for usar na apresentação, abra o túnel antes e não reinicie.
+e no `mosquitto.conf` da VM, `allow_anonymous false` + `password_file`. O
+arquivo `passwd` está no `.gitignore`.
+
+**Testar de fora da VM:**
+
+```bash
+mosquitto_sub -h mqtt.<seu-dominio> -t 'tankvitals/#' -v -u tankvitals -P <senha>
+```
+
+---
+
+## Plano B: broker público com bridge (INFRA-04)
+
+Se a porta da VM não abrir a tempo, ou a VM cair no dia da apresentação: o ESP32
+publica no `test.mosquitto.org` (que também é Mosquitto) e o Mosquitto local
+importa o tópico por *bridge* — o backend continua falando só com um Mosquitto.
+
+O bloco de bridge está comentado no `mosquitto.conf`. Antes de usar, **troque o
+prefixo de tópico por um único do grupo** (ex.: `tankvitals-unifacef-g3`): o
+broker público é aberto, e no prefixo genérico qualquer um pode publicar.
+
+Trocar entre os dois cenários é mexer em quatro linhas do `sketch.ino`
+(`MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`, `MQTT_PASS`) e recompilar no Wokwi.
+
+**Último recurso:** `ngrok tcp 1883` expõe o Mosquitto local, mas o endereço
+muda a cada execução — serve para destravar um teste, não para a apresentação.
 
 ---
 
@@ -105,7 +154,10 @@ for usar na apresentação, abra o túnel antes e não reinicie.
 | --- | --- | --- |
 | `Connection refused` no 1883 | Mosquitto 2.x sem `listener`/`allow_anonymous` | conferir o `mosquitto.conf` (INFRA-01) |
 | Bridge reconectando em laço | falta `try_private false` | o broker público não é seu |
-| Mensagem de outro grupo no tópico | prefixo genérico no broker público | trocar por prefixo único (INFRA-03) |
+| Mensagem de outro grupo no tópico | prefixo genérico no broker público | trocar por prefixo único (INFRA-04) |
 | `401 unauthorized` do InfluxDB | token sem escopo no bucket, ou org errada | refazer o token (INFRA-02) |
 | Dados sumiram depois do restart | subiu com `down -v` | `-v` apaga os volumes |
 | Porta 1883 ocupada | Mosquitto instalado direto no Windows | parar o serviço local ou trocar a porta publicada |
+| VM não responde na 1883, mesmo com a Security List liberada | falta a regra de `iptables`/`firewalld` dentro da instância | são dois firewalls (INFRA-03) |
+| Conexão ao domínio falha, mas ao IP funciona | registro DNS proxiado (nuvem laranja) no Cloudflare | deixar o registro como *DNS only* |
+| `Connection Refused: not authorised` | broker da VM com senha e cliente sem credencial | preencher `MQTT_USERNAME`/`MQTT_PASSWORD` no `.env` e no sketch |
