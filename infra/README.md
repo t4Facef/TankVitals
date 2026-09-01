@@ -79,18 +79,18 @@ Testar o broker sem depender do ESP32, com dois terminais:
 
 ```bash
 # terminal A — escuta o broker LOCAL
-mosquitto_sub -h localhost -t '<SEU_PREFIXO>/#' -v
+mosquitto_sub -h localhost -t 'tankvitals-unifacef-g3/#' -v
 
 # terminal B — publica imitando o dispositivo
-mosquitto_pub -h localhost -t '<SEU_PREFIXO>/tanque-01/telemetry' \
+mosquitto_pub -h localhost -t 'tankvitals-unifacef-g3/tanque-01/telemetry' \
   -m '{"device_id":"teste","tank_id":"tanque-01","temperature_c":25.5}'
 ```
 
-Para validar a **bridge** do plano B (INFRA-04), publique no broker **público** e confirme
+Para validar a **bridge** (INFRA-04), publique no broker **público** e confirme
 que a mensagem aparece no terminal A:
 
 ```bash
-mosquitto_pub -h test.mosquitto.org -t '<SEU_PREFIXO>/tanque-01/telemetry' \
+mosquitto_pub -h test.mosquitto.org -t 'tankvitals-unifacef-g3/tanque-01/telemetry' \
   -m '{"device_id":"teste","tank_id":"tanque-01","temperature_c":25.5}'
 ```
 
@@ -123,7 +123,7 @@ X-Influxdb-Version: v2.7.12
 Pub/sub no Mosquitto — o `mosquitto_sub` recebeu o que o `mosquitto_pub` enviou:
 
 ```
-tankvitals/tanque-01/telemetry {"device_id":"teste","tank_id":"tanque-01","temperature_c":25.5}
+tankvitals-unifacef-g3/tanque-01/telemetry {"device_id":"esp32-tank-01","tank_id":"tanque-01","temperature_c":26.4}
 ```
 
 Bucket conferido: `tankvitals`, org `unifacef`, `retentionRules[0].everySeconds
@@ -134,67 +134,14 @@ Bucket conferido: `tankvitals`, org `unifacef`, `retentionRules[0].everySeconds
 
 ---
 
-## Broker na VM Oracle (INFRA-03) — configuração padrão
+## Como o ESP32 chega no broker (INFRA-04)
 
-Só o **Mosquitto** roda na VM. InfluxDB, backend e frontend continuam na máquina
-local: todos fazem conexão *de saída* para o broker, então nenhum deles precisa
-de porta aberta.
-
-```
-ESP32 (Wokwi) --publish--> mqtt.<dominio>:1883 (VM Oracle)
-                                   ^
-                        subscribe  |
-                   backend Python (maquina local) --> InfluxDB --> Vue
-```
-
-**Abrir a porta 1883.** A VM da Oracle tem dois firewalls empilhados, e abrir só
-um não funciona — é aqui que quase todo mundo trava:
-
-```bash
-# 1) console da Oracle: Networking -> VCN -> Security List -> Add Ingress Rule
-#    Source 0.0.0.0/0 | IP Protocol TCP | Destination Port Range 1883
-
-# 2) dentro da VM, por SSH:
-#    Ubuntu
-sudo iptables -I INPUT 6 -p tcp --dport 1883 -j ACCEPT
-sudo netfilter-persistent save
-
-#    Oracle Linux
-sudo firewall-cmd --permanent --add-port=1883/tcp && sudo firewall-cmd --reload
-```
-
-**DNS.** Crie um registro **A** `mqtt.<seu-dominio>` apontando para o IP público
-da VM. No Cloudflare o registro precisa ficar **cinza (DNS only)** — a nuvem
-laranja só encaminha portas HTTP/HTTPS e quebra o tráfego MQTT. Pelo mesmo
-motivo, **Cloudflare Tunnel não funciona** para MQTT: porta TCP arbitrária lá
-exige o Spectrum, que é plano Enterprise.
-
-**Senha.** Obrigatória, já que a porta fica aberta para a internet:
-
-```bash
-mosquitto_passwd -c /mosquitto/config/passwd tankvitals
-```
-
-e no `mosquitto.conf` da VM, `allow_anonymous false` + `password_file`. O
-arquivo `passwd` está no `.gitignore`.
-
-**Testar de fora da VM:**
-
-```bash
-mosquitto_sub -h mqtt.<seu-dominio> -t 'tankvitals/#' -v -u tankvitals -P <senha>
-```
-
----
-
-## Plano B: broker público com bridge (INFRA-04)
-
-Se a porta da VM não abrir a tempo, ou a VM cair no dia da apresentação: o ESP32
+O ESP32 do Wokwi roda na nuvem e não enxerga o `localhost` de ninguém. Ele
 publica no `test.mosquitto.org` (que também é Mosquitto) e o Mosquitto local
-importa o tópico por *bridge* — o backend continua falando só com um Mosquitto.
+importa o tópico por *bridge* — o backend continua falando só com um Mosquitto,
+e nenhuma máquina da equipe precisa de porta aberta.
 
-O bloco de bridge está comentado no `mosquitto.conf`, já com o prefixo do grupo
-(`tankvitals-unifacef-g3`) preenchido. Para ativar: descomentar as 7 linhas e
-`docker compose restart mosquitto`.
+A bridge **sobe junto com o container**, já configurada com o prefixo do grupo.
 
 **Testado em 01/09/2026** — a bridge conectou e a mensagem atravessou:
 
@@ -213,18 +160,16 @@ tankvitals-unifacef-g3/tanque-01/telemetry {"device_id":"teste-bridge","tank_id"
 
 Sem laço de reconexão no log — o `try_private false` é o que evita isso.
 
-### Trocando de cenário (5 passos)
+### O prefixo precisa bater em três lugares
 
-| # | Onde | O quê |
-| --- | --- | --- |
-| 1 | `mosquitto.conf` | descomentar o bloco `connection wokwi-bridge` |
-| 2 | terminal | `docker compose restart mosquitto` |
-| 3 | `sketch.ino` | `MQTT_HOST` → `test.mosquitto.org`, `MQTT_USER`/`MQTT_PASS` → vazios |
-| 4 | `sketch.ino` | `TOPIC_PREFIX` → `tankvitals-unifacef-g3` |
-| 5 | `.env` | `MQTT_HOST=localhost` e `MQTT_TOPIC_PREFIX=tankvitals-unifacef-g3` |
+| Onde | Chave |
+| --- | --- |
+| `firmware/wokwi/sketch.ino` | `TOPIC_PREFIX` |
+| `.env` da raiz | `MQTT_TOPIC_PREFIX` |
+| `infra/mosquitto/config/mosquitto.conf` | linha `topic` da bridge |
 
-O backend continua falando só com o Mosquitto local nos dois cenários — quem
-muda de endereço é o ESP32.
+Se um dos três divergir, a mensagem sai do ESP32 e some sem erro nenhum — é o
+sintoma mais chato de diagnosticar aqui.
 
 **Último recurso:** `ngrok tcp 1883` expõe o Mosquitto local, mas o endereço
 muda a cada execução — serve para destravar um teste, não para a apresentação.
@@ -237,10 +182,8 @@ muda a cada execução — serve para destravar um teste, não para a apresenta�
 | --- | --- | --- |
 | `Connection refused` no 1883 | Mosquitto 2.x sem `listener`/`allow_anonymous` | conferir o `mosquitto.conf` (INFRA-01) |
 | Bridge reconectando em laço | falta `try_private false` | o broker público não é seu |
-| Mensagem de outro grupo no tópico | prefixo genérico no broker público | trocar por prefixo único (INFRA-04) |
+| Mensagem de outro grupo no tópico | prefixo genérico no broker público | conferir o prefixo nos três lugares (INFRA-04) |
+| ESP32 publica mas nada chega no backend | prefixo diferente entre sketch, bridge e `.env` | alinhar os três |
 | `401 unauthorized` do InfluxDB | token sem escopo no bucket, ou org errada | refazer o token (INFRA-02) |
 | Dados sumiram depois do restart | subiu com `down -v` | `-v` apaga os volumes |
 | Porta 1883 ocupada | Mosquitto instalado direto no Windows | parar o serviço local ou trocar a porta publicada |
-| VM não responde na 1883, mesmo com a Security List liberada | falta a regra de `iptables`/`firewalld` dentro da instância | são dois firewalls (INFRA-03) |
-| Conexão ao domínio falha, mas ao IP funciona | registro DNS proxiado (nuvem laranja) no Cloudflare | deixar o registro como *DNS only* |
-| `Connection Refused: not authorised` | broker da VM com senha e cliente sem credencial | preencher `MQTT_USERNAME`/`MQTT_PASSWORD` no `.env` e no sketch |
