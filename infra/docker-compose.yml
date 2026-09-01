@@ -46,6 +46,47 @@ services:
       - influxdb-data:/var/lib/influxdb2
       - influxdb-config:/etc/influxdb2
 
+  # Perfil "app": `docker compose up -d` continua subindo só a infraestrutura,
+  # que é o fluxo do README. A pilha inteira sobe com
+  # `docker compose --profile app up -d --build` (dashboard na 8080).
+
+  backend:
+    profiles: ["app"]
+    build:
+      context: ../backend
+    container_name: tankvitals-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      # Na rede do compose quem responde é o nome do serviço; localhost dentro
+      # do container é o próprio container.
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_TOKEN: ${INFLUXDB_ADMIN_TOKEN:-tankvitals-dev-token}
+      CORS_ORIGINS: http://localhost:8080,http://localhost:5173
+    depends_on:
+      influxdb:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+
+  frontend:
+    profiles: ["app"]
+    build:
+      context: ../frontend
+    container_name: tankvitals-frontend
+    restart: unless-stopped
+    ports:
+      # 8080 para não brigar com o `npm run dev` na 5173.
+      - "8080:80"
+    depends_on:
+      - backend
+
 volumes:
   influxdb-data:
   influxdb-config:
