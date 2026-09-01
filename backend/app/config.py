@@ -1,39 +1,75 @@
 """Configuração da aplicação — lida do .env da raiz do projeto.
 
 Tarefa: BE-01
+
 Contrato: docs/ARQUITETURA.md §8 (variáveis de ambiente) e §5 (faixas seguras)
 
-Regra: nenhum valor configurável pode estar espalhado pelo código. Se é
-endereço, credencial ou limite de faixa, mora aqui.
+Regra: nenhum valor configurável pode estar espalhado pelo código.
 """
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Configuração única da aplicação.
+    """Configuração única da aplicação."""
 
-    TODO(BE-01): declarar os campos abaixo com tipo e valor padrão, seguindo
-    exatamente os nomes da ARQUITETURA §8.
+    # -------------------------
+    # MQTT
+    # -------------------------
+    mqtt_host: str = "localhost"
+    mqtt_port: int = 1883
+    mqtt_username: str | None = None
+    mqtt_password: str | None = None
+    mqtt_topic_prefix: str = "tankvitals"
+    mqtt_client_id: str = "tankvitals-backend"
 
-    MQTT:
-        mqtt_host, mqtt_port, mqtt_username, mqtt_password,
-        mqtt_topic_prefix, mqtt_client_id
+    # -------------------------
+    # InfluxDB
+    # -------------------------
+    influx_url: str = "http://localhost:8086"
+    influx_token: str
+    influx_org: str = "tankvitals"
+    influx_bucket: str = "tankvitals"
 
-    InfluxDB:
-        influx_url, influx_token, influx_org, influx_bucket
+    # -------------------------
+    # API
+    # -------------------------
+    api_host: str = "0.0.0.0"
+    api_port: int = 8000
+    cors_origins: str = "http://localhost:5173"
 
-    API:
-        api_host, api_port, cors_origins
+    # -------------------------
+    # Faixas seguras
+    # -------------------------
+    temp_ok_min: float = 24.0
+    temp_ok_max: float = 28.0
 
-    Faixas seguras (ARQUITETURA §5):
-        temp_ok_min, temp_ok_max, ph_ok_min, ph_ok_max,
-        level_ok_min, turbidity_ok_max
+    ph_ok_min: float = 6.5
+    ph_ok_max: float = 8.5
 
-    Atenção ao critério de aceite: faltando INFLUX_TOKEN, a aplicação deve
-    falhar na inicialização com mensagem clara — e não estourar erro genérico
-    mais tarde, na primeira escrita.
-    """
+    level_ok_min: float = 30.0
+
+    turbidity_ok_max: float = 300.0
+
+    # Provisórios para permitir 3 níveis
+    temp_crit_min: float = 20.0
+    temp_crit_max: float = 32.0
+
+    ph_crit_min: float = 6.0
+    ph_crit_max: float = 9.0
+
+    level_ok_max: float = 90.0
+    level_crit_min: float = 10.0
+    level_crit_max: float = 98.0
+
+    distance_ok_min: float = 10.0
+    distance_ok_max: float = 250.0
+    distance_crit_min: float = 5.0
+    distance_crit_max: float = 350.0
+
+    turbidity_ok_min: float = 0.0
+    turbidity_crit_min: float = 0.0
+    turbidity_crit_max: float = 700.0
 
     model_config = SettingsConfigDict(
         env_file=("../.env", ".env"),
@@ -43,4 +79,4 @@ class Settings(BaseSettings):
 
 
 # Instância única importada pelo resto da aplicação.
-# TODO(BE-01): settings = Settings()
+settings = Settings()
