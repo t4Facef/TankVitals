@@ -59,19 +59,15 @@ flowchart LR
     subgraph Dispositivo
         ESP[ESP32 no Wokwi<br/>DS18B20, HC-SR04,<br/>pH, turbidez]
     end
-    subgraph Broker
-        PUB[Mosquitto público<br/>test.mosquitto.org]
-        MOSQ[Mosquitto local<br/>:1883]
-    end
-    subgraph Backend Python
+    MOSQ[Mosquitto<br/>mqtt.dominio:1883<br/>VM Oracle]
+    subgraph Maquina local
         ING[Ingestor MQTT<br/>paho-mqtt]
         API[API HTTP + WebSocket<br/>FastAPI]
+        DB[(InfluxDB 2.x<br/>bucket tankvitals)]
     end
-    DB[(InfluxDB 2.x<br/>bucket tankvitals)]
     WEB[Dashboard<br/>Vue 3 + TS + Vite<br/>Chart.js]
 
-    ESP -->|publish JSON| PUB
-    PUB -->|bridge| MOSQ
+    ESP -->|publish JSON| MOSQ
     MOSQ -->|subscribe| ING
     ING -->|write| DB
     API -->|Flux query| DB
@@ -82,18 +78,21 @@ flowchart LR
 O detalhamento de cada contrato (tópicos, payload, schema do banco, endpoints)
 está em **[docs/ARQUITETURA.md](docs/ARQUITETURA.md)**.
 
-### Por que existe um broker público no caminho
+### Onde o broker roda, e por quê
 
 O ESP32 simulado no Wokwi roda na nuvem e **não enxerga a rede local** da
-equipe. Duas saídas válidas, ambas cumprindo a exigência de usar Mosquitto:
+equipe — ele precisa de um broker com endereço público.
 
-- **Opção A (padrão)** — o ESP32 publica no `test.mosquitto.org`, que é uma
-  instância pública do **próprio Mosquitto**, e o Mosquitto local consome esse
-  tópico por *bridge*. O backend sempre fala com o broker local.
-- **Opção B** — expor o Mosquitto local com um túnel TCP (`ngrok tcp 1883`) e
-  apontar o firmware direto para ele.
+- **Padrão** — o Mosquitto roda numa **VM gratuita da Oracle**, em
+  `mqtt.<dominio>:1883`, com usuário e senha. InfluxDB, backend e frontend
+  continuam na máquina local: todos fazem conexão *de saída* para o broker, sem
+  precisar de porta aberta.
+- **Plano B** — o ESP32 publica no `test.mosquitto.org` (que é uma instância
+  pública do próprio Mosquitto) e um Mosquitto local importa o tópico por
+  *bridge*.
 
-Detalhes e passo a passo em [TAREFAS.md](docs/TAREFAS.md) (INFRA-03).
+Detalhes e passo a passo em [TAREFAS.md](docs/TAREFAS.md) (INFRA-03 e INFRA-04),
+e a discussão completa na [ARQUITETURA §7](docs/ARQUITETURA.md#7-conectividade-wokwi--mosquitto).
 
 ---
 
@@ -122,7 +121,7 @@ TankVitals/
 │  ├─ ARQUITETURA.md               <- contratos: MQTT, JSON, InfluxDB, API
 │  ├─ TAREFAS.md                   <- backlog com passo a passo e aceite
 │  └─ PADROES-DESENVOLVIMENTO.md   <- branch, commit, PR e receitas de Git
-├─ firmware/wokwi/                 <- FW-01..05: diagram.json + sketch.ino
+├─ firmware/wokwi/                 <- circuito e sketch do ESP32 (FW-01..05)
 ├─ backend/
 │  ├─ app/                         <- BE-01..08: config, models, alerts,
 │  │                                  influx_repo, mqtt_ingestor, api, main
@@ -132,7 +131,7 @@ TankVitals/
 ├─ frontend/                       <- FE-01..08: Vue 3 + TS + Vite + Chart.js
 └─ infra/
    ├─ docker-compose.yml           <- INFRA-01: Mosquitto + InfluxDB
-   └─ mosquitto/config/            <- INFRA-01 e INFRA-03 (bridge)
+   └─ mosquitto/config/            <- config local e da VM (INFRA-01, INFRA-03)
 ```
 
 ---
@@ -148,7 +147,8 @@ TankVitals/
 | Projeto Python criado (dependências instaladas) | ✅ `pytest` rodando |
 | Arquivos de Docker e Mosquitto | ✅ criados, faltam os `TODO` da INFRA-01 |
 | Infraestrutura no ar (Mosquitto + InfluxDB) | ⬜ INFRA-01..05 |
-| Firmware ESP32 / Wokwi | ⬜ FW-01..05 |
+| Circuito no Wokwi e leitura dos 4 sensores | ✅ FW-01 e FW-02 |
+| Firmware: Wi-Fi, MQTT e publicação | ⬜ FW-03..05 |
 | Backend Python | ⬜ BE-01..09 |
 | Frontend Vue 3 | ⬜ FE-01..08 |
 

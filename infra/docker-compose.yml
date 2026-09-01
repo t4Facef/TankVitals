@@ -15,7 +15,7 @@ services:
       - ./mosquitto/data:/mosquitto/data
       - ./mosquitto/log:/mosquitto/log
     # A configuração fica em ./mosquitto/config/mosquitto.conf
-    # A bridge com o broker público é a tarefa INFRA-03.
+    # A configuração do broker da VM é a INFRA-03; a bridge do plano B, a INFRA-04.
 
   influxdb:
     image: influxdb:2.7

@@ -190,25 +190,107 @@ da BE-09.
 
 ---
 
-### INFRA-03 — Ligar o Wokwi ao Mosquitto local (bridge)
+### INFRA-03 — Publicar o Mosquitto na VM Oracle
 
-**Objetivo:** mensagem publicada pelo ESP32 na nuvem aparecer no broker local.
-**Depende de:** INFRA-01.
-**Entrega:** `mosquitto.conf` com bloco de bridge, prefixo de tópico definido.
-**Estimativa:** 2 h. **Esta é a tarefa mais chata do projeto — comece cedo.**
+**Objetivo:** ter um broker próprio acessível pela internet, com senha, em
+`mqtt.<seu-dominio>`.
+**Depende de:** INFRA-01 (para conhecer o `mosquitto.conf`).
+**Entrega:** Mosquitto rodando na VM, `mosquitto.conf` de produção, seção
+"Broker na VM" no `infra/README.md`, `.env` apontando para o domínio.
+**Estimativa:** 3 h. **Comece cedo — a parte de firewall costuma consumir o dia.**
 
 **Contexto:** o ESP32 do Wokwi roda na nuvem e não enxerga o `localhost` de
-vocês. Ver ARQUITETURA §7 para a explicação completa.
+ninguém. Com uma VM pública, ele publica direto no broker do grupo e some toda
+a gambiarra de broker público e túnel. Só o **Mosquitto** precisa morar na VM —
+InfluxDB, backend e frontend continuam na máquina local, porque todos fazem
+conexão *de saída* para o broker.
+
+```
+ESP32 (Wokwi) --publish--> mqtt.<dominio>:1883 (VM Oracle)
+                                   ^
+                        subscribe  |
+                   backend Python (maquina local) --> InfluxDB --> Vue
+```
+
+> ⚠️ **O Cloudflare Tunnel não serve aqui.** O proxy do Cloudflare só encaminha
+> portas HTTP/HTTPS (80, 443, 8080, 8443...). Porta TCP arbitrária como a 1883
+> exige o Spectrum, que é plano Enterprise. E o contorno de MQTT sobre
+> WebSocket na 443 não ajuda, porque a `PubSubClient` do ESP32 não fala
+> WebSocket. O caminho é abrir a porta 1883 de verdade.
 
 **Passo a passo**
 
-1. **Escolha um prefixo de tópico único** para o grupo — ex.:
-   `tankvitals-unifacef-g3`. O broker público é aberto: com o prefixo genérico
-   `tankvitals`, outro grupo (ou um curioso qualquer) publica lixo no seu tópico
-   no meio da apresentação.
-2. Anote esse prefixo nos dois lugares que o usam: `TOPIC_PREFIX` no
-   `sketch.ino` (FW-04) e `MQTT_TOPIC_PREFIX` no `.env` (BE-01).
-3. Acrescente ao `mosquitto.conf` o bloco de bridge com o broker público:
+1. Na VM, suba **só o Mosquitto** (o mesmo serviço do `docker-compose.yml`, sem
+   o InfluxDB — ele fica na máquina local).
+2. **Abra a porta nos dois firewalls.** A VM da Oracle tem dois empilhados, e
+   abrir só um não funciona — é aqui que quase todo mundo trava:
+
+   | Camada | Onde | O que fazer |
+   | --- | --- | --- |
+   | Security List da VCN | console da Oracle | Networking → VCN → Security List → *Add Ingress Rule*: Source `0.0.0.0/0`, protocolo TCP, porta de destino `1883` |
+   | Firewall da instância | dentro da VM (SSH) | Ubuntu: `sudo iptables -I INPUT 6 -p tcp --dport 1883 -j ACCEPT` e depois `sudo netfilter-persistent save`<br>Oracle Linux: `sudo firewall-cmd --permanent --add-port=1883/tcp && sudo firewall-cmd --reload` |
+
+3. **DNS:** crie um registro **A** `mqtt.<seu-dominio>` apontando para o IP
+   público da VM. No Cloudflare, deixe o registro **cinza (DNS only)** — a nuvem
+   laranja quebra o tráfego, porque ela só entende HTTP.
+4. **Coloque senha no broker.** Com a 1883 aberta para a internet,
+   `allow_anonymous true` significa broker aberto para o mundo inteiro:
+   ```bash
+   # dentro do container/VM, cria o arquivo de senhas
+   mosquitto_passwd -c /mosquitto/config/passwd tankvitals
+   ```
+   e no `mosquitto.conf`:
+   ```
+   listener 1883
+   allow_anonymous false
+   password_file /mosquitto/config/passwd
+   ```
+   O arquivo `passwd` **não vai para o Git**.
+5. Leve as credenciais para os dois lados: `MQTT_HOST`, `MQTT_USERNAME` e
+   `MQTT_PASSWORD` no `.env` do backend, e `MQTT_HOST`/`MQTT_USER`/`MQTT_PASS`
+   no `sketch.ino` (FW-03).
+6. Teste **de fora da VM**, da sua máquina:
+   ```bash
+   mosquitto_sub -h mqtt.<seu-dominio> -t 'tankvitals/#' -v -u tankvitals -P <senha>
+   mosquitto_pub -h mqtt.<seu-dominio> -t 'tankvitals/tanque-01/telemetry'      -u tankvitals -P <senha> -m '{"device_id":"teste","tank_id":"tanque-01","temperature_c":25.5}'
+   ```
+
+**Critério de aceite**
+
+- [ ] `mqtt.<seu-dominio>` resolve para o IP público da VM (`nslookup` confirma).
+- [ ] `mosquitto_sub` conecta de fora da VM.
+- [ ] Sem usuário e senha, a conexão é **recusada**.
+- [ ] O arquivo `passwd` não está versionado.
+- [ ] O broker volta sozinho depois de reiniciar a VM (`restart: unless-stopped`).
+
+**Ref.:** ARQUITETURA §2.1, §7, §8. **Peso:** parte de 2,0 pts (MQTT/Mosquitto).
+
+---
+
+### INFRA-04 — Plano B: broker público com bridge
+
+**Objetivo:** ter um caminho alternativo caso a porta da VM não abra a tempo, ou
+a VM caia no dia da apresentação.
+**Depende de:** INFRA-01.
+**Entrega:** bloco de bridge comentado no `mosquitto.conf` local, seção "Plano B"
+no `infra/README.md`.
+**Estimativa:** 1 h.
+
+**Contexto:** o `test.mosquitto.org` é uma instância **pública do próprio
+Mosquitto**. O ESP32 publica lá, e o Mosquitto local importa as mensagens por
+*bridge* — então o backend continua falando só com um Mosquitto, e a exigência
+da disciplina segue cumprida.
+
+```
+ESP32 (Wokwi) --publish--> test.mosquitto.org:1883 --bridge--> Mosquitto local --> backend
+```
+
+**Passo a passo**
+
+1. **Escolha um prefixo de tópico único** — ex.: `tankvitals-unifacef-g3`. O
+   broker público é aberto: com o prefixo genérico `tankvitals`, outro grupo (ou
+   um curioso qualquer) publica lixo no seu tópico no meio da apresentação.
+2. Acrescente ao `mosquitto.conf` **local** o bloco de bridge:
    ```
    connection wokwi-bridge
    address test.mosquitto.org:1883
@@ -218,53 +300,24 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
    try_private false
    notifications false
    ```
-   - `in` = só importa mensagens (não reexporta as suas para o mundo);
+   - `in` = só importa mensagens, não reexporta as suas para o mundo;
    - `try_private false` é necessário porque o broker público não é seu.
-4. Reinicie: `docker compose restart mosquitto` e acompanhe
-   `docker compose logs -f mosquitto` — deve aparecer conexão de bridge
-   estabelecida, sem laço de reconexão.
-5. Teste sem o ESP32, simulando os dois lados:
-   - terminal A (escuta o broker **local**):
-     `mosquitto_sub -h localhost -t '<SEU_PREFIXO>/#' -v`
-   - terminal B (publica no broker **público**, imitando o Wokwi):
-     `mosquitto_pub -h test.mosquitto.org -t '<SEU_PREFIXO>/tanque-01/telemetry' -m '{"device_id":"teste","tank_id":"tanque-01","temperature_c":25.5}'`
-   - a mensagem tem que aparecer no terminal A.
+3. `docker compose restart mosquitto` e acompanhe
+   `docker compose logs -f mosquitto` — a bridge deve conectar e ficar estável,
+   sem laço de reconexão.
+4. Teste com dois terminais: `mosquitto_sub` no broker **local** e
+   `mosquitto_pub` no **público**, no mesmo tópico. A mensagem tem que
+   atravessar.
+5. Documente quais linhas do `sketch.ino` mudam entre um cenário e outro
+   (`MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`, `MQTT_PASS`) — no dia, é só trocar e
+   recompilar no Wokwi.
 
 **Critério de aceite**
 
 - [ ] Prefixo único escolhido e registrado na ARQUITETURA §2.1.
-- [ ] Log do Mosquitto mostra a bridge conectada e estável (sem reconectar em laço).
-- [ ] O teste dos dois terminais acima funciona.
-- [ ] A bridge se recupera sozinha depois de `docker compose restart mosquitto`.
-
-**Ref.:** ARQUITETURA §2.1, §7. **Peso:** parte de 2,0 pts (MQTT/Mosquitto).
-
----
-
-### INFRA-04 — Plano B: túnel TCP para o dia da apresentação
-
-**Objetivo:** ter um caminho alternativo caso o broker público esteja fora do ar.
-**Depende de:** INFRA-01.
-**Entrega:** seção "Plano B" no `infra/README.md`.
-**Estimativa:** 1 h.
-
-**Passo a passo**
-
-1. Instale o ngrok e rode `ngrok tcp 1883`.
-2. Anote o host e a porta gerados (ex.: `0.tcp.sa.ngrok.io:14523`).
-3. Documente no `infra/README.md` exatamente quais duas linhas do `sketch.ino`
-   precisam mudar (`MQTT_HOST` e `MQTT_PORT`) e que, depois disso, é preciso
-   recompilar no Wokwi.
-4. Faça o teste completo pelo túnel pelo menos uma vez, para não ser a primeira
-   vez no dia da defesa.
-
-> **Atenção:** o endereço do ngrok muda a cada execução. Se for usar na
-> apresentação, deixe o túnel aberto desde antes e não reinicie.
-
-**Critério de aceite**
-
-- [ ] Publicação do Wokwi chegando no Mosquitto local via túnel, testada.
-- [ ] Procedimento de troca documentado em menos de 5 passos.
+- [ ] Bridge conectada e estável no log do Mosquitto.
+- [ ] Mensagem publicada no broker público chega no local.
+- [ ] Troca entre broker próprio e plano B documentada em menos de 5 passos.
 
 **Ref.:** ARQUITETURA §7. **Peso:** seguro contra perder 2,0 pts.
 
@@ -302,7 +355,7 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
 > Meta da frente: o ESP32 simulado lê 4 sensores e publica JSON válido no MQTT.
 > **Peso: 1,5 pts (dispositivo) + parte de 2,0 pts (MQTT).**
 
-### FW-01 — Montar o circuito no Wokwi
+### FW-01 — Montar o circuito no Wokwi ✅
 
 **Objetivo:** ter o projeto no Wokwi com todas as peças ligadas corretamente.
 **Depende de:** nada.
@@ -312,6 +365,11 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
 **Passo a passo**
 
 1. Crie um projeto novo em [wokwi.com](https://wokwi.com) → **ESP32 → Arduino**.
+   Confira que é Arduino mesmo: se o projeto for criado como ESP-IDF, o
+   `diagram.json` fica com `"builder": "esp-idf"` na placa e as bibliotecas do
+   `libraries.txt` não funcionam.
+   A placa usada é a `board-esp32-devkit-c-v4`, em que os pinos são nomeados
+   pelo número do GPIO (`esp:4`, `esp:19`, `esp:34`...).
 2. Adicione as peças pelo botão **+** e faça as ligações desta tabela:
 
    | Peça (nome no Wokwi) | Pino da peça | Pino do ESP32 | Observação |
@@ -319,7 +377,7 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
    | `DS18B20` (temperatura) | VCC | 3V3 | |
    | | GND | GND | |
    | | DQ | **D4** | |
-   | `Resistor` 4.7 kΩ | entre DQ e 3V3 | — | *pull-up* do barramento 1-Wire |
+   | `Resistor` **4,7 kΩ** | um lado no DQ do DS18B20 | outro lado no 3V3 | *pull-up* do barramento 1-Wire |
    | `HC-SR04` (ultrassônico) | VCC | 3V3 | |
    | | TRIG | **D5** | |
    | | ECHO | **D18** | |
@@ -330,8 +388,14 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
    | `Photoresistor (LDR)` (faz o papel do sensor de turbidez) | VCC | 3V3 | |
    | | GND | GND | |
    | | AO | **D35** | a saída digital DO não é usada |
-   | `LED` vermelho (alerta local) | ânodo (A) | resistor 220 Ω → **D19** | |
+   | `Resistor` **220 Ω** | um lado no **GPIO 19** | outro lado no ânodo (A) do LED | limita a corrente do LED |
+   | `LED` vermelho (alerta local) | ânodo (A) | resistor 220 Ω → **GPIO 19** | |
    | | cátodo (C) | GND | |
+
+   > São **dois** resistores diferentes, com funções diferentes: o de 4,7 kΩ é o
+   > pull-up do DS18B20 e o de 220 Ω é do LED. Usar um só, ligando o LED direto
+   > no 3V3, deixa o LED aceso o tempo todo e o GPIO 19 sem controlar nada — e
+   > ainda deixa o sensor de temperatura sem pull-up.
 
    > **Por que D34 e D35 e não outro pino qualquer:** o ESP32 tem dois
    > conversores analógicos e o **ADC2 é usado pelo rádio Wi-Fi**. Ler ADC2 com
@@ -340,19 +404,24 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
 
 3. Copie o conteúdo da aba `diagram.json` do Wokwi para
    `firmware/wokwi/diagram.json` no repositório.
-4. Coloque o link público do projeto Wokwi no `README.md`.
+4. Confira a fiação antes de seguir: cole `firmware/wokwi/sketch.ino` no
+   projeto e rode. Ele lê os 4 sensores e imprime no monitor serial. Mexendo no
+   potenciômetro, na luz do LDR e na distância do HC-SR04, os valores impressos
+   têm que acompanhar.
+5. Coloque o link público do projeto Wokwi no `README.md`.
 
 **Critério de aceite**
 
-- [ ] As 6 peças estão no circuito e ligadas conforme a tabela.
-- [ ] `diagram.json` versionado e idêntico ao do Wokwi.
-- [ ] A simulação inicia sem aviso de fiação no console do Wokwi.
+- [x] As 7 peças (mais a placa) estão no circuito e ligadas conforme a tabela.
+- [x] O LED só acende quando o firmware manda, não fica aceso sozinho.
+- [x] `diagram.json` versionado e idêntico ao do Wokwi.
+- [x] A simulação inicia sem aviso de fiação no console do Wokwi.
 
 **Peso:** 1,5 pts (dispositivo IoT).
 
 ---
 
-### FW-02 — Leitura dos sensores
+### FW-02 — Leitura dos sensores ✅
 
 **Objetivo:** as 4 grandezas sendo lidas e impressas no monitor serial.
 **Depende de:** FW-01.
@@ -361,9 +430,9 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
 
 **Passo a passo**
 
-1. No Wokwi, adicione as bibliotecas (aba **Library Manager**):
-   `OneWire`, `DallasTemperature`, `PubSubClient`, `ArduinoJson`. Isso gera o
-   `libraries.txt` — versione esse arquivo também.
+1. No Wokwi, adicione as bibliotecas (aba **Library Manager**): `OneWire` e
+   `DallasTemperature` agora; `PubSubClient` e `ArduinoJson` entram na FW-03 e
+   na FW-04. Isso gera o `libraries.txt` — versione esse arquivo também.
 2. No `setup()`: `Serial.begin(115200)`, `pinMode` do TRIG (saída), ECHO
    (entrada) e LED (saída), `analogReadResolution(12)`,
    `analogSetAttenuation(ADC_11db)` e `dallas.begin()`.
@@ -383,10 +452,11 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
 
 **Critério de aceite**
 
-- [ ] Monitor serial mostra as 4 grandezas a cada 5 s.
-- [ ] Mexer no potenciômetro muda o pH; mexer na luz do LDR muda a turbidez.
-- [ ] Mudar a distância do HC-SR04 muda o nível, sempre entre 0 e 100 %.
-- [ ] Sensor removido do circuito devolve `NAN` em vez de travar o firmware.
+- [x] Monitor serial mostra as 4 grandezas (hoje a cada 1 s; a FW-04 troca o
+      `delay()` por `millis()` e fixa o intervalo em 5 s).
+- [x] Mexer no potenciômetro muda o pH; mexer na luz do LDR muda a turbidez.
+- [x] Mudar a distância do HC-SR04 muda o nível, sempre entre 0 e 100 %.
+- [x] Sensor removido do circuito devolve `NAN` em vez de travar o firmware.
 
 **Ref.:** ARQUITETURA §3. **Peso:** parte de 1,5 pts.
 
@@ -395,7 +465,8 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
 ### FW-03 — Wi-Fi, NTP e conexão MQTT
 
 **Objetivo:** o ESP32 conectar no broker e se manter conectado.
-**Depende de:** FW-02, INFRA-03 (para saber o prefixo de tópico).
+**Depende de:** FW-02, INFRA-03 (para saber o endereço, o prefixo de tópico
+e as credenciais do broker).
 **Entrega:** `sketch.ino` atualizado.
 **Estimativa:** 3 h.
 
@@ -411,8 +482,11 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
    - `setServer(MQTT_HOST, 1883)`, `setBufferSize(512)` (o padrão de 256 bytes
      **corta o JSON** e a publicação falha silenciosamente), `setKeepAlive(30)`;
    - **clientId único** — concatene algo do MAC (`ESP.getEfuseMac()`). Dois
-     clientes com o mesmo id no broker público derrubam um ao outro em laço
-     infinito de reconexão;
+     clientes com o mesmo id derrubam um ao outro em laço infinito de
+     reconexão;
+   - **usuário e senha** — o broker da VM (INFRA-03) recusa conexão anônima.
+     Passe `MQTT_USER`/`MQTT_PASS` no `mqtt.connect()`; se o rc for `5`
+     (`not authorised`), é credencial errada, não problema de rede;
    - **Last Will**: tópico `<PREFIXO>/<tank_id>/status`, QoS 1, retained,
      payload `offline`.
 4. Assim que conectar, publique `online` (retained) no tópico de status.
@@ -421,7 +495,7 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
 **Critério de aceite**
 
 - [ ] Serial mostra o IP obtido e "conectado" no MQTT em menos de 15 s.
-- [ ] `mosquitto_sub` no broker local recebe `online` no tópico de status.
+- [ ] `mosquitto_sub` no broker recebe `online` no tópico de status.
 - [ ] Parar a simulação faz o broker publicar `offline` (Last Will).
 - [ ] Reiniciar o broker não deixa o ESP32 travado — ele reconecta sozinho.
 
@@ -1119,7 +1193,8 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
 3. Ensaie a demonstração do alerta: mexer no potenciômetro do Wokwi até o pH sair
    da faixa e mostrar o LED acendendo, o card virando vermelho e o ponto saindo
    da faixa no gráfico. **Esse é o momento que amarra a apresentação inteira.**
-4. Ensaie o que fazer se cair a internet, se o broker público sumir (INFRA-04) e
+4. Ensaie o que fazer se cair a internet, se a VM do broker cair (plano B da
+   INFRA-04) e
    se o Wokwi travar (use o simulador da BE-09 como último recurso, avisando que
    é ferramenta de desenvolvimento).
 
