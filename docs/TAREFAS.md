@@ -13,7 +13,7 @@ não invente nomes novos, senão as peças não encaixam na hora de integrar.
 
 - [Como usar este backlog](#como-usar-este-backlog)
 - [Ordem de execução (caminho crítico)](#ordem-de-execução-caminho-crítico)
-- [Frente INFRA — Mosquitto e InfluxDB](#frente-infra--mosquitto-e-influxdb) (5 tarefas)
+- [Frente INFRA — Mosquitto e InfluxDB](#frente-infra--mosquitto-e-influxdb) (4 tarefas + 1 descartada)
 - [Frente FW — Firmware ESP32 / Wokwi](#frente-fw--firmware-esp32--wokwi) (5 tarefas)
 - [Frente BE — Backend Python](#frente-be--backend-python) (9 tarefas)
 - [Frente FE — Frontend Vue 3](#frente-fe--frontend-vue-3) (8 tarefas)
@@ -60,7 +60,7 @@ criado e as dependências instaladas:
 | Projeto Python com `requirements.txt` instalado e `pytest` rodando | `backend/` | implementar os módulos (BE-01..09) |
 | Módulos do backend com a assinatura das funções e os `TODO(BE-xx)` | `backend/app/` | o corpo das funções |
 | Testes com os casos já nomeados, marcados como pendentes | `backend/tests/` | tirar o `skip` e implementar (BE-09) |
-| `docker-compose.yml` e `mosquitto.conf` | `infra/` | completar os `TODO` (INFRA-01, INFRA-03) |
+| `docker-compose.yml` e `mosquitto.conf` prontos e validados | `infra/` | nada (INFRA-01, 02 e 04 concluídas) |
 | `.env.example` com todas as chaves | raiz e `frontend/` | copiar para `.env` e preencher (INFRA-02) |
 
 Ou seja: as tarefas BE-01, FE-01 e INFRA-01 já começam parcialmente andadas —
@@ -74,7 +74,7 @@ O gargalo é o dado chegar no banco. Sem isso, nem backend nem front têm o que
 mostrar. Por isso INFRA e FW vêm primeiro.
 
 ```
-Semana 1   INFRA-01 -> INFRA-02 -> INFRA-03 ─┐
+Semana 1   INFRA-01 -> INFRA-02 -> INFRA-04 ─┐
            FW-01 -> FW-02 -> FW-03 ──────────┤
                                              ├─> INFRA-05 (dado chegando no broker)
 Semana 2   BE-01 -> BE-02 -> BE-04 -> BE-05 ─┘   (dado chegando no InfluxDB)
@@ -129,7 +129,7 @@ da BE-09.
    caracteres), `_ORG=unifacef`, `_BUCKET=tankvitals`, `_RETENTION=30d`,
    `_ADMIN_TOKEN` (invente um token fixo para o ambiente de desenvolvimento).
 3. Ponha `restart: unless-stopped` nos dois.
-4. Crie `mosquitto.conf` mínimo (a configuração completa é a INFRA-03):
+4. Crie `mosquitto.conf` mínimo (a bridge entra na INFRA-04):
    ```
    listener 1883
    allow_anonymous true
@@ -147,10 +147,10 @@ da BE-09.
 
 **Critério de aceite**
 
-- [ ] `docker compose up -d` sobe os dois containers sem erro.
-- [ ] `docker compose ps` mostra ambos como `running`/`healthy`.
-- [ ] `http://localhost:8086` abre a interface do InfluxDB e aceita o login criado.
-- [ ] `docker compose down && docker compose up -d` mantém os dados do InfluxDB.
+- [x] `docker compose up -d` sobe os dois containers sem erro.
+- [x] `docker compose ps` mostra ambos como `running`/`healthy`.
+- [x] `http://localhost:8086` abre a interface do InfluxDB e aceita o login criado.
+- [x] `docker compose down && docker compose up -d` mantém os dados do InfluxDB.
 
 **Ref.:** ARQUITETURA §4, §8. **Peso:** habilita 3,5 pts.
 
@@ -179,10 +179,10 @@ da BE-09.
 
 **Critério de aceite**
 
-- [ ] Bucket `tankvitals` existe na org `unifacef` com retenção de 30 dias.
-- [ ] Token com escopo restrito ao bucket criado e salvo no `.env`.
-- [ ] `.env.example` versionado, `.env` **não** versionado.
-- [ ] Teste de escrita manual funciona:
+- [x] Bucket `tankvitals` existe na org `unifacef` com retenção de 30 dias.
+- [x] Token com escopo restrito ao bucket criado e salvo no `.env`.
+- [x] `.env.example` versionado, `.env` **não** versionado.
+- [x] Teste de escrita manual funciona:
       `curl -i -XPOST "http://localhost:8086/api/v2/write?org=unifacef&bucket=tankvitals&precision=s" -H "Authorization: Token $INFLUX_TOKEN" --data-raw "water_reading,tank_id=teste temperature_c=25.5"`
       retorna **HTTP 204**.
 
@@ -190,96 +190,37 @@ da BE-09.
 
 ---
 
-### INFRA-03 — Publicar o Mosquitto na VM Oracle
+### INFRA-03 — Publicar o Mosquitto na VM Oracle ❌ DESCARTADA
 
-**Objetivo:** ter um broker próprio acessível pela internet, com senha, em
-`mqtt.<seu-dominio>`.
-**Depende de:** INFRA-01 (para conhecer o `mosquitto.conf`).
-**Entrega:** Mosquitto rodando na VM, `mosquitto.conf` de produção, seção
-"Broker na VM" no `infra/README.md`, `.env` apontando para o domínio.
-**Estimativa:** 3 h. **Comece cedo — a parte de firewall costuma consumir o dia.**
+A equipe decidiu não usar VM. O broker fica local e o ESP32 chega nele pela
+bridge da INFRA-04, que deixou de ser plano B e passou a ser o caminho único.
 
-**Contexto:** o ESP32 do Wokwi roda na nuvem e não enxerga o `localhost` de
-ninguém. Com uma VM pública, ele publica direto no broker do grupo e some toda
-a gambiarra de broker público e túnel. Só o **Mosquitto** precisa morar na VM —
-InfluxDB, backend e frontend continuam na máquina local, porque todos fazem
-conexão *de saída* para o broker.
+O motivo do descarte está registrado na
+[ARQUITETURA §7](ARQUITETURA.md#7-conectividade-wokwi--mosquitto): provisionar a
+instância, abrir a porta nos dois firewalls empilhados da Oracle e manter o DNS
+fora do proxy do Cloudflare custava mais tempo do que o projeto tinha.
 
-```
-ESP32 (Wokwi) --publish--> mqtt.<dominio>:1883 (VM Oracle)
-                                   ^
-                        subscribe  |
-                   backend Python (maquina local) --> InfluxDB --> Vue
-```
-
-> ⚠️ **O Cloudflare Tunnel não serve aqui.** O proxy do Cloudflare só encaminha
-> portas HTTP/HTTPS (80, 443, 8080, 8443...). Porta TCP arbitrária como a 1883
-> exige o Spectrum, que é plano Enterprise. E o contorno de MQTT sobre
-> WebSocket na 443 não ajuda, porque a `PubSubClient` do ESP32 não fala
-> WebSocket. O caminho é abrir a porta 1883 de verdade.
-
-**Passo a passo**
-
-1. Na VM, suba **só o Mosquitto** (o mesmo serviço do `docker-compose.yml`, sem
-   o InfluxDB — ele fica na máquina local).
-2. **Abra a porta nos dois firewalls.** A VM da Oracle tem dois empilhados, e
-   abrir só um não funciona — é aqui que quase todo mundo trava:
-
-   | Camada | Onde | O que fazer |
-   | --- | --- | --- |
-   | Security List da VCN | console da Oracle | Networking → VCN → Security List → *Add Ingress Rule*: Source `0.0.0.0/0`, protocolo TCP, porta de destino `1883` |
-   | Firewall da instância | dentro da VM (SSH) | Ubuntu: `sudo iptables -I INPUT 6 -p tcp --dport 1883 -j ACCEPT` e depois `sudo netfilter-persistent save`<br>Oracle Linux: `sudo firewall-cmd --permanent --add-port=1883/tcp && sudo firewall-cmd --reload` |
-
-3. **DNS:** crie um registro **A** `mqtt.<seu-dominio>` apontando para o IP
-   público da VM. No Cloudflare, deixe o registro **cinza (DNS only)** — a nuvem
-   laranja quebra o tráfego, porque ela só entende HTTP.
-4. **Coloque senha no broker.** Com a 1883 aberta para a internet,
-   `allow_anonymous true` significa broker aberto para o mundo inteiro:
-   ```bash
-   # dentro do container/VM, cria o arquivo de senhas
-   mosquitto_passwd -c /mosquitto/config/passwd tankvitals
-   ```
-   e no `mosquitto.conf`:
-   ```
-   listener 1883
-   allow_anonymous false
-   password_file /mosquitto/config/passwd
-   ```
-   O arquivo `passwd` **não vai para o Git**.
-5. Leve as credenciais para os dois lados: `MQTT_HOST`, `MQTT_USERNAME` e
-   `MQTT_PASSWORD` no `.env` do backend, e `MQTT_HOST`/`MQTT_USER`/`MQTT_PASS`
-   no `sketch.ino` (FW-03).
-6. Teste **de fora da VM**, da sua máquina:
-   ```bash
-   mosquitto_sub -h mqtt.<seu-dominio> -t 'tankvitals/#' -v -u tankvitals -P <senha>
-   mosquitto_pub -h mqtt.<seu-dominio> -t 'tankvitals/tanque-01/telemetry'      -u tankvitals -P <senha> -m '{"device_id":"teste","tank_id":"tanque-01","temperature_c":25.5}'
-   ```
-
-**Critério de aceite**
-
-- [ ] `mqtt.<seu-dominio>` resolve para o IP público da VM (`nslookup` confirma).
-- [ ] `mosquitto_sub` conecta de fora da VM.
-- [ ] Sem usuário e senha, a conexão é **recusada**.
-- [ ] O arquivo `passwd` não está versionado.
-- [ ] O broker volta sozinho depois de reiniciar a VM (`restart: unless-stopped`).
-
-**Ref.:** ARQUITETURA §2.1, §7, §8. **Peso:** parte de 2,0 pts (MQTT/Mosquitto).
+**Peso:** os 2,0 pts de MQTT/Mosquitto passam a depender da INFRA-04.
 
 ---
 
-### INFRA-04 — Plano B: broker público com bridge
+### INFRA-04 — Broker público com bridge ✅
 
-**Objetivo:** ter um caminho alternativo caso a porta da VM não abra a tempo, ou
-a VM caia no dia da apresentação.
+**Objetivo:** o ESP32 do Wokwi alcançar o Mosquitto local.
 **Depende de:** INFRA-01.
 **Entrega:** bloco de bridge comentado no `mosquitto.conf` local, seção "Plano B"
 no `infra/README.md`.
 **Estimativa:** 1 h.
 
-**Contexto:** o `test.mosquitto.org` é uma instância **pública do próprio
-Mosquitto**. O ESP32 publica lá, e o Mosquitto local importa as mensagens por
+**Contexto:** o ESP32 do Wokwi roda na nuvem e não enxerga o `localhost` de
+ninguém. O `test.mosquitto.org` é uma instância **pública do próprio
+Mosquitto**: o ESP32 publica lá e o Mosquitto local importa as mensagens por
 *bridge* — então o backend continua falando só com um Mosquitto, e a exigência
 da disciplina segue cumprida.
+
+**Feito em 01/09/2026.** A bridge sobe junto com o container (não está mais
+comentada) e foi testada: mensagem publicada no broker público chegou no local,
+sem laço de reconexão. Prefixo do grupo: `tankvitals-unifacef-g3`.
 
 ```
 ESP32 (Wokwi) --publish--> test.mosquitto.org:1883 --bridge--> Mosquitto local --> backend
@@ -314,10 +255,10 @@ ESP32 (Wokwi) --publish--> test.mosquitto.org:1883 --bridge--> Mosquitto local -
 
 **Critério de aceite**
 
-- [ ] Prefixo único escolhido e registrado na ARQUITETURA §2.1.
-- [ ] Bridge conectada e estável no log do Mosquitto.
-- [ ] Mensagem publicada no broker público chega no local.
-- [ ] Troca entre broker próprio e plano B documentada em menos de 5 passos.
+- [x] Prefixo único escolhido e registrado na ARQUITETURA §2.1.
+- [x] Bridge conectada e estável no log do Mosquitto.
+- [x] Mensagem publicada no broker público chega no local.
+- [x] Os três lugares onde o prefixo precisa bater estão documentados.
 
 **Ref.:** ARQUITETURA §7. **Peso:** seguro contra perder 2,0 pts.
 
@@ -326,7 +267,7 @@ ESP32 (Wokwi) --publish--> test.mosquitto.org:1883 --bridge--> Mosquitto local -
 ### INFRA-05 — Validação ponta a ponta da infraestrutura
 
 **Objetivo:** provar que os elos 1 a 3 da corrente funcionam antes do backend existir.
-**Depende de:** INFRA-03, FW-03.
+**Depende de:** INFRA-04, FW-03.
 **Entrega:** seção "Como validar" no `infra/README.md` com a saída esperada.
 **Estimativa:** 30 min.
 
@@ -462,11 +403,10 @@ ESP32 (Wokwi) --publish--> test.mosquitto.org:1883 --bridge--> Mosquitto local -
 
 ---
 
-### FW-03 — Wi-Fi, NTP e conexão MQTT
+### FW-03 — Wi-Fi, NTP e conexão MQTT ⚠️ escrito, falta validar no Wokwi
 
 **Objetivo:** o ESP32 conectar no broker e se manter conectado.
-**Depende de:** FW-02, INFRA-03 (para saber o endereço, o prefixo de tópico
-e as credenciais do broker).
+**Depende de:** FW-02, INFRA-04 (para saber o endereço e o prefixo de tópico).
 **Entrega:** `sketch.ino` atualizado.
 **Estimativa:** 3 h.
 
@@ -484,9 +424,10 @@ e as credenciais do broker).
    - **clientId único** — concatene algo do MAC (`ESP.getEfuseMac()`). Dois
      clientes com o mesmo id derrubam um ao outro em laço infinito de
      reconexão;
-   - **usuário e senha** — o broker da VM (INFRA-03) recusa conexão anônima.
-     Passe `MQTT_USER`/`MQTT_PASS` no `mqtt.connect()`; se o rc for `5`
-     (`not authorised`), é credencial errada, não problema de rede;
+   - **usuário e senha** — o broker público aceita conexão anônima, então os
+     dois ficam vazios; o `mqtt.connect()` recebe `NULL` nesse caso. Se um dia
+     o broker pedir credencial e o rc vier `5` (`not authorised`), é credencial
+     errada, não problema de rede;
    - **Last Will**: tópico `<PREFIXO>/<tank_id>/status`, QoS 1, retained,
      payload `offline`.
 4. Assim que conectar, publique `online` (retained) no tópico de status.
@@ -503,7 +444,7 @@ e as credenciais do broker).
 
 ---
 
-### FW-04 — Montar e publicar o payload JSON
+### FW-04 — Montar e publicar o payload JSON ⚠️ escrito, falta validar no Wokwi
 
 **Objetivo:** publicar telemetria no formato exato do contrato.
 **Depende de:** FW-03.
@@ -540,7 +481,7 @@ e as credenciais do broker).
 
 ---
 
-### FW-05 — Alerta local e assinatura de comandos
+### FW-05 — Alerta local e assinatura de comandos ⚠️ escrito, falta validar no Wokwi
 
 **Objetivo:** LED indicando anomalia e o gancho de atuação do 2º bimestre pronto.
 **Depende de:** FW-04.
@@ -720,7 +661,7 @@ e as credenciais do broker).
 ### BE-05 — Ingestor MQTT
 
 **Objetivo:** o serviço que fecha o elo MQTT → InfluxDB.
-**Depende de:** BE-02, BE-04, INFRA-03.
+**Depende de:** BE-02, BE-04, INFRA-04.
 **Entrega:** `backend/app/mqtt_ingestor.py`.
 **Estimativa:** 4 h.
 
