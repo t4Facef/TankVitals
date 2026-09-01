@@ -38,6 +38,35 @@ O token usado pelo backend é gerado na interface do InfluxDB
 (**Load Data → API Tokens**), com permissão de leitura e escrita **apenas no
 bucket `tankvitals`**, e vai para o `.env` da raiz (INFRA-02).
 
+Pela API, sem abrir a interface (`$ADMIN` é o `DOCKER_INFLUXDB_INIT_ADMIN_TOKEN`):
+
+```bash
+BUCKET_ID=$(curl -s "http://localhost:8086/api/v2/buckets?name=tankvitals" \
+  -H "Authorization: Token $ADMIN" | jq -r '.buckets[0].id')
+ORG_ID=$(curl -s "http://localhost:8086/api/v2/orgs?org=unifacef" \
+  -H "Authorization: Token $ADMIN" | jq -r '.orgs[0].id')
+
+curl -s -XPOST "http://localhost:8086/api/v2/authorizations" \
+  -H "Authorization: Token $ADMIN" -H "Content-Type: application/json" -d "{
+    \"orgID\": \"$ORG_ID\",
+    \"description\": \"tankvitals-backend\",
+    \"permissions\": [
+      {\"action\":\"read\", \"resource\":{\"type\":\"buckets\",\"id\":\"$BUCKET_ID\",\"orgID\":\"$ORG_ID\"}},
+      {\"action\":\"write\",\"resource\":{\"type\":\"buckets\",\"id\":\"$BUCKET_ID\",\"orgID\":\"$ORG_ID\"}}
+    ]
+  }" | jq -r '.token'
+```
+
+Conferindo que o escopo é mesmo restrito — o token do backend precisa **falhar**
+nas duas últimas:
+
+| Ação com o token do backend | Esperado | Obtido |
+| --- | --- | --- |
+| escrever no bucket `tankvitals` | 204 | ✅ 204 |
+| consultar com Flux | 200 | ✅ 200 |
+| criar outro bucket | negado | ✅ 401 |
+| listar tokens da organização | nada visível | ✅ 200 com lista vazia (o admin vê 2) |
+
 > Não use o token de admin no backend. Se ele vazar no GitHub, vaza o banco
 > inteiro. E se qualquer token vazar em commit, gere um novo — apagar o arquivo
 > depois não tira o segredo do histórico do Git.
@@ -73,8 +102,35 @@ curl -i -XPOST "http://localhost:8086/api/v2/write?org=unifacef&bucket=tankvital
   --data-raw "water_reading,tank_id=teste temperature_c=25.5"
 ```
 
-> Cole aqui um trecho real da saída quando estiver funcionando. Isso vira prova
-> de funcionamento na apresentação.
+### Saída real (01/09/2026)
+
+`docker compose ps`:
+
+```
+NAME                   STATUS
+tankvitals-influxdb    Up 16 minutes (healthy)
+tankvitals-mosquitto   Up 16 minutes
+```
+
+Escrita no InfluxDB:
+
+```
+HTTP/1.1 204 No Content
+X-Influxdb-Build: OSS
+X-Influxdb-Version: v2.7.12
+```
+
+Pub/sub no Mosquitto — o `mosquitto_sub` recebeu o que o `mosquitto_pub` enviou:
+
+```
+tankvitals/tanque-01/telemetry {"device_id":"teste","tank_id":"tanque-01","temperature_c":25.5}
+```
+
+Bucket conferido: `tankvitals`, org `unifacef`, `retentionRules[0].everySeconds
+= 2592000` (30 dias).
+
+> Falta ainda a parte que depende do dispositivo: telemetria a cada ~5 s vinda
+> do Wokwi e o `offline` do Last Will ao parar a simulação (precisa da FW-03).
 
 ---
 
