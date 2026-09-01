@@ -16,8 +16,7 @@ precisar mudar algo, muda aqui primeiro e avisa a equipe.
       v
 [2] MQTT publish  ->  tankvitals/tanque-01/telemetry
       v
-[3] Mosquitto (broker)
-      |  bridge do broker público -> broker local (ver §7)
+[3] Mosquitto (broker na VM, ou local com bridge - ver §7)
       v
 [4] Ingestor Python (paho-mqtt)
       |  valida o JSON (Pydantic), descarta payload malformado
@@ -60,10 +59,10 @@ Responsabilidade de cada peça:
   publica `offline` sozinho. É assim que o dashboard sabe que o dispositivo
   sumiu.
 
-> ⚠️ **Broker público:** se usar a Opção A (§7), qualquer pessoa no mundo pode
-> publicar em `tankvitals/#`. Antes da apresentação, troque o prefixo por algo
+> ⚠️ **Se cair no plano B** (broker público, §7 Opção B), qualquer pessoa no
+> mundo pode publicar em `tankvitals/#`. Nesse caso troque o prefixo por algo
 > único — ex.: `tankvitals-unifacef-g3` — em `sketch.ino` (`TOPIC_PREFIX`) e no
-> `.env` do backend (`MQTT_TOPIC_PREFIX`). Ver tarefa INFRA-03.
+> `.env` do backend (`MQTT_TOPIC_PREFIX`). Ver tarefa INFRA-04.
 
 ### 2.2 Payload de telemetria
 
@@ -300,33 +299,60 @@ inválido), 404 (tanque sem dados) ou 503 (InfluxDB indisponível).
 
 ---
 
-## 7. Conectividade Wokwi ↔ Mosquitto local
+## 7. Conectividade Wokwi ↔ Mosquitto
 
-O ESP32 do Wokwi roda na nuvem e não alcança `localhost` da equipe.
+O ESP32 do Wokwi roda na nuvem e não alcança o `localhost` de ninguém. Ele
+precisa de um broker com endereço público.
 
-**Opção A — bridge (padrão, sem instalar nada extra)**
+### Opção A — broker próprio na VM (padrão)
+
+```
+ESP32 (Wokwi) --publish--> mqtt.<dominio>:1883 (VM Oracle, always free)
+                                   ^
+                        subscribe  |
+                   backend Python (maquina local) --> InfluxDB --> Vue
+```
+
+Só o **Mosquitto** roda na VM; InfluxDB, backend e frontend continuam locais,
+porque todos fazem conexão *de saída* para o broker — nenhum deles precisa de
+porta aberta. A VM mais fraca do plano gratuito dá conta: o Mosquitto consome
+poucos MB de RAM.
+
+Exige **senha** no broker (`allow_anonymous false` + `password_file`): com a
+1883 aberta para a internet, broker anônimo é broker aberto para o mundo.
+
+Dois detalhes que costumam travar a configuração:
+
+- a VM da Oracle tem **dois firewalls empilhados** — a Security List da VCN e o
+  `iptables`/`firewalld` da própria instância. Abrir só um não funciona;
+- no Cloudflare, o registro DNS precisa ficar **cinza (DNS only)**. A nuvem
+  laranja só encaminha portas HTTP/HTTPS (80, 443, 8080, 8443...); TCP
+  arbitrário exige Spectrum, que é plano Enterprise. Pelo mesmo motivo, o
+  **Cloudflare Tunnel não resolve** — e o contorno de MQTT sobre WebSocket na
+  443 também não, porque a `PubSubClient` do ESP32 não fala WebSocket.
+
+Passo a passo em INFRA-03.
+
+### Opção B — broker público com bridge (plano B)
 
 ```
 ESP32 (Wokwi) --publish--> test.mosquitto.org:1883 --bridge--> Mosquitto local:1883 --> backend
 ```
 
-O `mosquitto.conf` local abre uma conexão de bridge com o broker público e
-assina `tankvitals/#`, replicando as mensagens localmente. O backend só conhece
-o broker local. Cumpre a exigência de usar Mosquitto (o público **é** Mosquitto,
-e o local também). Configuração em INFRA-03.
+O `test.mosquitto.org` é uma instância pública do **próprio Mosquitto**. O
+`mosquitto.conf` local abre uma bridge com ele e importa o tópico, então o
+backend continua falando só com o broker local — a exigência da disciplina segue
+cumprida. O preço é depender de um serviço de terceiros e de um prefixo de
+tópico único, já que o broker é aberto a qualquer um. Passo a passo em INFRA-04.
 
-**Opção B — túnel TCP**
+### Opção C — túnel TCP (emergência)
 
-```
-ESP32 (Wokwi) --publish--> <id>.ngrok.io:12345 --> Mosquitto local:1883 --> backend
-```
+`ngrok tcp 1883` expõe o Mosquitto local e o host/porta gerados vão para
+`MQTT_HOST`/`MQTT_PORT` no `sketch.ino`. Funciona, mas o endereço muda a cada
+execução do ngrok — serve para destravar um teste, não para a apresentação.
 
-`ngrok tcp 1883`, e o host/porta gerados vão para `MQTT_HOST`/`MQTT_PORT` no
-`sketch.ino`. Mais direto de explicar na apresentação, porém a URL muda a cada
-execução do ngrok.
-
-**Recomendação:** deixar a Opção A configurada como padrão e ter a Opção B como
-plano B no dia da apresentação, caso o broker público esteja instável.
+**Recomendação:** Opção A como padrão, com a Opção B configurada e testada como
+plano B para o dia da apresentação.
 
 ---
 

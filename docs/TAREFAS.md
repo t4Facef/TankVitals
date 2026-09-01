@@ -190,25 +190,107 @@ da BE-09.
 
 ---
 
-### INFRA-03 — Ligar o Wokwi ao Mosquitto local (bridge)
+### INFRA-03 — Publicar o Mosquitto na VM Oracle
 
-**Objetivo:** mensagem publicada pelo ESP32 na nuvem aparecer no broker local.
-**Depende de:** INFRA-01.
-**Entrega:** `mosquitto.conf` com bloco de bridge, prefixo de tópico definido.
-**Estimativa:** 2 h. **Esta é a tarefa mais chata do projeto — comece cedo.**
+**Objetivo:** ter um broker próprio acessível pela internet, com senha, em
+`mqtt.<seu-dominio>`.
+**Depende de:** INFRA-01 (para conhecer o `mosquitto.conf`).
+**Entrega:** Mosquitto rodando na VM, `mosquitto.conf` de produção, seção
+"Broker na VM" no `infra/README.md`, `.env` apontando para o domínio.
+**Estimativa:** 3 h. **Comece cedo — a parte de firewall costuma consumir o dia.**
 
 **Contexto:** o ESP32 do Wokwi roda na nuvem e não enxerga o `localhost` de
-vocês. Ver ARQUITETURA §7 para a explicação completa.
+ninguém. Com uma VM pública, ele publica direto no broker do grupo e some toda
+a gambiarra de broker público e túnel. Só o **Mosquitto** precisa morar na VM —
+InfluxDB, backend e frontend continuam na máquina local, porque todos fazem
+conexão *de saída* para o broker.
+
+```
+ESP32 (Wokwi) --publish--> mqtt.<dominio>:1883 (VM Oracle)
+                                   ^
+                        subscribe  |
+                   backend Python (maquina local) --> InfluxDB --> Vue
+```
+
+> ⚠️ **O Cloudflare Tunnel não serve aqui.** O proxy do Cloudflare só encaminha
+> portas HTTP/HTTPS (80, 443, 8080, 8443...). Porta TCP arbitrária como a 1883
+> exige o Spectrum, que é plano Enterprise. E o contorno de MQTT sobre
+> WebSocket na 443 não ajuda, porque a `PubSubClient` do ESP32 não fala
+> WebSocket. O caminho é abrir a porta 1883 de verdade.
 
 **Passo a passo**
 
-1. **Escolha um prefixo de tópico único** para o grupo — ex.:
-   `tankvitals-unifacef-g3`. O broker público é aberto: com o prefixo genérico
-   `tankvitals`, outro grupo (ou um curioso qualquer) publica lixo no seu tópico
-   no meio da apresentação.
-2. Anote esse prefixo nos dois lugares que o usam: `TOPIC_PREFIX` no
-   `sketch.ino` (FW-04) e `MQTT_TOPIC_PREFIX` no `.env` (BE-01).
-3. Acrescente ao `mosquitto.conf` o bloco de bridge com o broker público:
+1. Na VM, suba **só o Mosquitto** (o mesmo serviço do `docker-compose.yml`, sem
+   o InfluxDB — ele fica na máquina local).
+2. **Abra a porta nos dois firewalls.** A VM da Oracle tem dois empilhados, e
+   abrir só um não funciona — é aqui que quase todo mundo trava:
+
+   | Camada | Onde | O que fazer |
+   | --- | --- | --- |
+   | Security List da VCN | console da Oracle | Networking → VCN → Security List → *Add Ingress Rule*: Source `0.0.0.0/0`, protocolo TCP, porta de destino `1883` |
+   | Firewall da instância | dentro da VM (SSH) | Ubuntu: `sudo iptables -I INPUT 6 -p tcp --dport 1883 -j ACCEPT` e depois `sudo netfilter-persistent save`<br>Oracle Linux: `sudo firewall-cmd --permanent --add-port=1883/tcp && sudo firewall-cmd --reload` |
+
+3. **DNS:** crie um registro **A** `mqtt.<seu-dominio>` apontando para o IP
+   público da VM. No Cloudflare, deixe o registro **cinza (DNS only)** — a nuvem
+   laranja quebra o tráfego, porque ela só entende HTTP.
+4. **Coloque senha no broker.** Com a 1883 aberta para a internet,
+   `allow_anonymous true` significa broker aberto para o mundo inteiro:
+   ```bash
+   # dentro do container/VM, cria o arquivo de senhas
+   mosquitto_passwd -c /mosquitto/config/passwd tankvitals
+   ```
+   e no `mosquitto.conf`:
+   ```
+   listener 1883
+   allow_anonymous false
+   password_file /mosquitto/config/passwd
+   ```
+   O arquivo `passwd` **não vai para o Git**.
+5. Leve as credenciais para os dois lados: `MQTT_HOST`, `MQTT_USERNAME` e
+   `MQTT_PASSWORD` no `.env` do backend, e `MQTT_HOST`/`MQTT_USER`/`MQTT_PASS`
+   no `sketch.ino` (FW-03).
+6. Teste **de fora da VM**, da sua máquina:
+   ```bash
+   mosquitto_sub -h mqtt.<seu-dominio> -t 'tankvitals/#' -v -u tankvitals -P <senha>
+   mosquitto_pub -h mqtt.<seu-dominio> -t 'tankvitals/tanque-01/telemetry'      -u tankvitals -P <senha> -m '{"device_id":"teste","tank_id":"tanque-01","temperature_c":25.5}'
+   ```
+
+**Critério de aceite**
+
+- [ ] `mqtt.<seu-dominio>` resolve para o IP público da VM (`nslookup` confirma).
+- [ ] `mosquitto_sub` conecta de fora da VM.
+- [ ] Sem usuário e senha, a conexão é **recusada**.
+- [ ] O arquivo `passwd` não está versionado.
+- [ ] O broker volta sozinho depois de reiniciar a VM (`restart: unless-stopped`).
+
+**Ref.:** ARQUITETURA §2.1, §7, §8. **Peso:** parte de 2,0 pts (MQTT/Mosquitto).
+
+---
+
+### INFRA-04 — Plano B: broker público com bridge
+
+**Objetivo:** ter um caminho alternativo caso a porta da VM não abra a tempo, ou
+a VM caia no dia da apresentação.
+**Depende de:** INFRA-01.
+**Entrega:** bloco de bridge comentado no `mosquitto.conf` local, seção "Plano B"
+no `infra/README.md`.
+**Estimativa:** 1 h.
+
+**Contexto:** o `test.mosquitto.org` é uma instância **pública do próprio
+Mosquitto**. O ESP32 publica lá, e o Mosquitto local importa as mensagens por
+*bridge* — então o backend continua falando só com um Mosquitto, e a exigência
+da disciplina segue cumprida.
+
+```
+ESP32 (Wokwi) --publish--> test.mosquitto.org:1883 --bridge--> Mosquitto local --> backend
+```
+
+**Passo a passo**
+
+1. **Escolha um prefixo de tópico único** — ex.: `tankvitals-unifacef-g3`. O
+   broker público é aberto: com o prefixo genérico `tankvitals`, outro grupo (ou
+   um curioso qualquer) publica lixo no seu tópico no meio da apresentação.
+2. Acrescente ao `mosquitto.conf` **local** o bloco de bridge:
    ```
    connection wokwi-bridge
    address test.mosquitto.org:1883
@@ -218,53 +300,24 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
    try_private false
    notifications false
    ```
-   - `in` = só importa mensagens (não reexporta as suas para o mundo);
+   - `in` = só importa mensagens, não reexporta as suas para o mundo;
    - `try_private false` é necessário porque o broker público não é seu.
-4. Reinicie: `docker compose restart mosquitto` e acompanhe
-   `docker compose logs -f mosquitto` — deve aparecer conexão de bridge
-   estabelecida, sem laço de reconexão.
-5. Teste sem o ESP32, simulando os dois lados:
-   - terminal A (escuta o broker **local**):
-     `mosquitto_sub -h localhost -t '<SEU_PREFIXO>/#' -v`
-   - terminal B (publica no broker **público**, imitando o Wokwi):
-     `mosquitto_pub -h test.mosquitto.org -t '<SEU_PREFIXO>/tanque-01/telemetry' -m '{"device_id":"teste","tank_id":"tanque-01","temperature_c":25.5}'`
-   - a mensagem tem que aparecer no terminal A.
+3. `docker compose restart mosquitto` e acompanhe
+   `docker compose logs -f mosquitto` — a bridge deve conectar e ficar estável,
+   sem laço de reconexão.
+4. Teste com dois terminais: `mosquitto_sub` no broker **local** e
+   `mosquitto_pub` no **público**, no mesmo tópico. A mensagem tem que
+   atravessar.
+5. Documente quais linhas do `sketch.ino` mudam entre um cenário e outro
+   (`MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`, `MQTT_PASS`) — no dia, é só trocar e
+   recompilar no Wokwi.
 
 **Critério de aceite**
 
 - [ ] Prefixo único escolhido e registrado na ARQUITETURA §2.1.
-- [ ] Log do Mosquitto mostra a bridge conectada e estável (sem reconectar em laço).
-- [ ] O teste dos dois terminais acima funciona.
-- [ ] A bridge se recupera sozinha depois de `docker compose restart mosquitto`.
-
-**Ref.:** ARQUITETURA §2.1, §7. **Peso:** parte de 2,0 pts (MQTT/Mosquitto).
-
----
-
-### INFRA-04 — Plano B: túnel TCP para o dia da apresentação
-
-**Objetivo:** ter um caminho alternativo caso o broker público esteja fora do ar.
-**Depende de:** INFRA-01.
-**Entrega:** seção "Plano B" no `infra/README.md`.
-**Estimativa:** 1 h.
-
-**Passo a passo**
-
-1. Instale o ngrok e rode `ngrok tcp 1883`.
-2. Anote o host e a porta gerados (ex.: `0.tcp.sa.ngrok.io:14523`).
-3. Documente no `infra/README.md` exatamente quais duas linhas do `sketch.ino`
-   precisam mudar (`MQTT_HOST` e `MQTT_PORT`) e que, depois disso, é preciso
-   recompilar no Wokwi.
-4. Faça o teste completo pelo túnel pelo menos uma vez, para não ser a primeira
-   vez no dia da defesa.
-
-> **Atenção:** o endereço do ngrok muda a cada execução. Se for usar na
-> apresentação, deixe o túnel aberto desde antes e não reinicie.
-
-**Critério de aceite**
-
-- [ ] Publicação do Wokwi chegando no Mosquitto local via túnel, testada.
-- [ ] Procedimento de troca documentado em menos de 5 passos.
+- [ ] Bridge conectada e estável no log do Mosquitto.
+- [ ] Mensagem publicada no broker público chega no local.
+- [ ] Troca entre broker próprio e plano B documentada em menos de 5 passos.
 
 **Ref.:** ARQUITETURA §7. **Peso:** seguro contra perder 2,0 pts.
 
@@ -412,7 +465,8 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
 ### FW-03 — Wi-Fi, NTP e conexão MQTT
 
 **Objetivo:** o ESP32 conectar no broker e se manter conectado.
-**Depende de:** FW-02, INFRA-03 (para saber o prefixo de tópico).
+**Depende de:** FW-02, INFRA-03 (para saber o endereço, o prefixo de tópico
+e as credenciais do broker).
 **Entrega:** `sketch.ino` atualizado.
 **Estimativa:** 3 h.
 
@@ -428,8 +482,11 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
    - `setServer(MQTT_HOST, 1883)`, `setBufferSize(512)` (o padrão de 256 bytes
      **corta o JSON** e a publicação falha silenciosamente), `setKeepAlive(30)`;
    - **clientId único** — concatene algo do MAC (`ESP.getEfuseMac()`). Dois
-     clientes com o mesmo id no broker público derrubam um ao outro em laço
-     infinito de reconexão;
+     clientes com o mesmo id derrubam um ao outro em laço infinito de
+     reconexão;
+   - **usuário e senha** — o broker da VM (INFRA-03) recusa conexão anônima.
+     Passe `MQTT_USER`/`MQTT_PASS` no `mqtt.connect()`; se o rc for `5`
+     (`not authorised`), é credencial errada, não problema de rede;
    - **Last Will**: tópico `<PREFIXO>/<tank_id>/status`, QoS 1, retained,
      payload `offline`.
 4. Assim que conectar, publique `online` (retained) no tópico de status.
@@ -438,7 +495,7 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
 **Critério de aceite**
 
 - [ ] Serial mostra o IP obtido e "conectado" no MQTT em menos de 15 s.
-- [ ] `mosquitto_sub` no broker local recebe `online` no tópico de status.
+- [ ] `mosquitto_sub` no broker recebe `online` no tópico de status.
 - [ ] Parar a simulação faz o broker publicar `offline` (Last Will).
 - [ ] Reiniciar o broker não deixa o ESP32 travado — ele reconecta sozinho.
 
@@ -1136,7 +1193,8 @@ vocês. Ver ARQUITETURA §7 para a explicação completa.
 3. Ensaie a demonstração do alerta: mexer no potenciômetro do Wokwi até o pH sair
    da faixa e mostrar o LED acendendo, o card virando vermelho e o ponto saindo
    da faixa no gráfico. **Esse é o momento que amarra a apresentação inteira.**
-4. Ensaie o que fazer se cair a internet, se o broker público sumir (INFRA-04) e
+4. Ensaie o que fazer se cair a internet, se a VM do broker cair (plano B da
+   INFRA-04) e
    se o Wokwi travar (use o simulador da BE-09 como último recurso, avisando que
    é ferramenta de desenvolvimento).
 
