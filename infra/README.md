@@ -192,12 +192,39 @@ Se a porta da VM não abrir a tempo, ou a VM cair no dia da apresentação: o ES
 publica no `test.mosquitto.org` (que também é Mosquitto) e o Mosquitto local
 importa o tópico por *bridge* — o backend continua falando só com um Mosquitto.
 
-O bloco de bridge está comentado no `mosquitto.conf`. Antes de usar, **troque o
-prefixo de tópico por um único do grupo** (ex.: `tankvitals-unifacef-g3`): o
-broker público é aberto, e no prefixo genérico qualquer um pode publicar.
+O bloco de bridge está comentado no `mosquitto.conf`, já com o prefixo do grupo
+(`tankvitals-unifacef-g3`) preenchido. Para ativar: descomentar as 7 linhas e
+`docker compose restart mosquitto`.
 
-Trocar entre os dois cenários é mexer em quatro linhas do `sketch.ino`
-(`MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`, `MQTT_PASS`) e recompilar no Wokwi.
+**Testado em 01/09/2026** — a bridge conectou e a mensagem atravessou:
+
+```
+# log do mosquitto local
+Bridge support available.
+Connecting bridge wokwi-bridge (test.mosquitto.org:1883)
+
+# publicado no broker PUBLICO
+mosquitto_pub -h test.mosquitto.org -t 'tankvitals-unifacef-g3/tanque-01/telemetry' \
+  -m '{"device_id":"teste-bridge","tank_id":"tanque-01","temperature_c":25.5}'
+
+# recebido no broker LOCAL
+tankvitals-unifacef-g3/tanque-01/telemetry {"device_id":"teste-bridge","tank_id":"tanque-01","temperature_c":25.5}
+```
+
+Sem laço de reconexão no log — o `try_private false` é o que evita isso.
+
+### Trocando de cenário (5 passos)
+
+| # | Onde | O quê |
+| --- | --- | --- |
+| 1 | `mosquitto.conf` | descomentar o bloco `connection wokwi-bridge` |
+| 2 | terminal | `docker compose restart mosquitto` |
+| 3 | `sketch.ino` | `MQTT_HOST` → `test.mosquitto.org`, `MQTT_USER`/`MQTT_PASS` → vazios |
+| 4 | `sketch.ino` | `TOPIC_PREFIX` → `tankvitals-unifacef-g3` |
+| 5 | `.env` | `MQTT_HOST=localhost` e `MQTT_TOPIC_PREFIX=tankvitals-unifacef-g3` |
+
+O backend continua falando só com o Mosquitto local nos dois cenários — quem
+muda de endereço é o ESP32.
 
 **Último recurso:** `ngrok tcp 1883` expõe o Mosquitto local, mas o endereço
 muda a cada execução — serve para destravar um teste, não para a apresentação.

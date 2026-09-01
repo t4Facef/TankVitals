@@ -60,9 +60,10 @@ Responsabilidade de cada peça:
   sumiu.
 
 > ⚠️ **Se cair no plano B** (broker público, §7 Opção B), qualquer pessoa no
-> mundo pode publicar em `tankvitals/#`. Nesse caso troque o prefixo por algo
-> único — ex.: `tankvitals-unifacef-g3` — em `sketch.ino` (`TOPIC_PREFIX`) e no
-> `.env` do backend (`MQTT_TOPIC_PREFIX`). Ver tarefa INFRA-04.
+> mundo pode publicar em `tankvitals/#`. O prefixo do grupo para esse cenário é
+> **`tankvitals-unifacef-g3`**, e ele vai em três lugares: `sketch.ino`
+> (`TOPIC_PREFIX`), `.env` do backend (`MQTT_TOPIC_PREFIX`) e a linha `topic` da
+> bridge no `mosquitto.conf`. Ver tarefa INFRA-04.
 
 ### 2.2 Payload de telemetria
 
