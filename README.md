@@ -152,14 +152,19 @@ TankVitals/
 | Backend e frontend em container (perfil `app`) | ✅ imagens buildando |
 | Circuito no Wokwi e leitura dos 4 sensores | ✅ FW-01 e FW-02 |
 | Firmware: Wi-Fi, MQTT e publicação | ✅ FW-03..05 escritos, falta rodar no Wokwi |
-| Backend Python | ⬜ BE-01..09 |
-| Frontend Vue 3 | ✅ FE-01..08 |
+| Backend Python | ✅ BE-01..09, 106 testes verdes |
+| Frontend Vue 3 | ✅ FE-01..08, build limpo |
+| Cadeia completa validada (MQTT → Influx → API → dashboard) | ✅ com o simulador; falta com o Wokwi |
+| Apresentação e evidências | ⬜ ENT-01..04 |
 
-A infraestrutura está no ar e validada, o dashboard está pronto e o firmware
-está escrito. **O que falta é o backend** (BE-01..09): sem ele o dashboard não
-tem com quem falar e o dado do ESP32 não chega no banco. O passo a passo e o
-critério de aceite de cada tarefa estão em
-**[docs/TAREFAS.md](docs/TAREFAS.md)**.
+O sistema roda ponta a ponta: o simulador publica no MQTT, o ingestor valida e
+grava no InfluxDB, a API serve o dashboard e o gráfico atualiza ao vivo por
+WebSocket. **O que falta é validar com o ESP32 de verdade** (abrir o projeto no
+Wokwi) e preparar a entrega — prints, link do Wokwi e ensaio.
+
+O passo a passo e o critério de aceite de cada tarefa estão em
+**[docs/TAREFAS.md](docs/TAREFAS.md)**; o que sobrou está reunido em
+**[docs/O-QUE-FALTA.md](docs/O-QUE-FALTA.md)**.
 
 Para criar branch, escrever commit e abrir PR, veja o
 [guia de desenvolvimento](docs/PADROES-DESENVOLVIMENTO.md).
