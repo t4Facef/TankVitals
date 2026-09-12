@@ -553,9 +553,9 @@ ESP32 (Wokwi) --publish--> test.mosquitto.org:1883 --bridge--> Mosquitto local -
 
 **Critério de aceite**
 
-- [ ] `pip install -r requirements.txt` funciona do zero em outra máquina.
-- [ ] `python -c "from app.config import settings; print(settings.influx_bucket)"` imprime `tankvitals`.
-- [ ] Faltando `INFLUX_TOKEN` no `.env`, a aplicação falha na inicialização com
+- [x] `pip install -r requirements.txt` funciona do zero em outra máquina.
+- [x] `python -c "from app.config import settings; print(settings.influx_bucket)"` imprime `tankvitals`.
+- [x] Faltando `INFLUX_TOKEN` no `.env`, a aplicação falha na inicialização com
       mensagem clara (não com erro genérico lá na frente).
 
 **Ref.:** ARQUITETURA §8. **Peso:** parte de 1,0 pt.
@@ -587,11 +587,11 @@ ESP32 (Wokwi) --publish--> test.mosquitto.org:1883 --bridge--> Mosquitto local -
 
 **Critério de aceite**
 
-- [ ] Payload de exemplo da ARQUITETURA §2.2 é aceito e todos os campos batem.
-- [ ] `b"nao e json"` devolve `None` sem lançar exceção.
-- [ ] Payload com `"ph": 99` mantém as outras grandezas e descarta só o pH.
-- [ ] Payload só com `device_id` e `tank_id` é rejeitado.
-- [ ] Testes automatizados cobrindo os 4 casos acima (entregues na BE-09).
+- [x] Payload de exemplo da ARQUITETURA §2.2 é aceito e todos os campos batem.
+- [x] `b"nao e json"` devolve `None` sem lançar exceção.
+- [x] Payload com `"ph": 99` mantém as outras grandezas e descarta só o pH.
+- [x] Payload só com `device_id` e `tank_id` é rejeitado.
+- [x] Testes automatizados cobrindo os 4 casos acima (entregues na BE-09).
 
 **Ref.:** ARQUITETURA §3. **Peso:** parte de 1,0 pt.
 
@@ -615,11 +615,11 @@ ESP32 (Wokwi) --publish--> test.mosquitto.org:1883 --bridge--> Mosquitto local -
 
 **Critério de aceite**
 
-- [ ] Leitura toda dentro da faixa → geral `ok`.
-- [ ] Temperatura 29 °C com o resto normal → geral `atencao`.
-- [ ] pH 5,5 → geral `critico`, mesmo com o resto `ok`.
-- [ ] Valores exatamente nos limites classificados conforme a tabela §5.
-- [ ] Testes automatizados dos casos de borda (BE-09).
+- [x] Leitura toda dentro da faixa → geral `ok`.
+- [x] Temperatura 29 °C com o resto normal → geral `atencao`.
+- [x] pH 5,5 → geral `critico`, mesmo com o resto `ok`.
+- [x] Valores exatamente nos limites classificados conforme a tabela §5.
+- [x] Testes automatizados dos casos de borda (BE-09).
 
 **Ref.:** ARQUITETURA §5. **Peso:** parte de 1,0 pt.
 
@@ -649,10 +649,10 @@ ESP32 (Wokwi) --publish--> test.mosquitto.org:1883 --bridge--> Mosquitto local -
 
 **Critério de aceite**
 
-- [ ] Uma leitura publicada no MQTT aparece no Data Explorer do InfluxDB.
-- [ ] Tags e fields exatamente com os nomes da ARQUITETURA §4.
-- [ ] Parar o InfluxDB não derruba o backend; ele volta a gravar quando o banco volta.
-- [ ] Leitura sem `ph` grava o ponto sem o field `ph` (e não com `ph=0`).
+- [x] Uma leitura publicada no MQTT aparece no Data Explorer do InfluxDB.
+- [x] Tags e fields exatamente com os nomes da ARQUITETURA §4.
+- [x] Parar o InfluxDB não derruba o backend; ele volta a gravar quando o banco volta.
+- [x] Leitura sem `ph` grava o ponto sem o field `ph` (e não com `ph=0`).
 
 **Ref.:** ARQUITETURA §4. **Peso:** 1,5 pts (persistência).
 
@@ -683,9 +683,10 @@ ESP32 (Wokwi) --publish--> test.mosquitto.org:1883 --bridge--> Mosquitto local -
 **Critério de aceite**
 
 - [ ] Com o Wokwi rodando, o log mostra uma leitura gravada a cada ~5 s.
-- [ ] Payload lixo publicado à mão gera `WARNING` e **não** derruba o serviço.
-- [ ] Derrubar e subir o Mosquitto: o ingestor reconecta sozinho e volta a gravar.
-- [ ] Mensagem `offline` no tópico de status é refletida no estado em memória.
+      *(conferido com `fake_device.py --interval 5`; falta repetir com o Wokwi)*
+- [x] Payload lixo publicado à mão gera `WARNING` e **não** derruba o serviço.
+- [x] Derrubar e subir o Mosquitto: o ingestor reconecta sozinho e volta a gravar.
+- [x] Mensagem `offline` no tópico de status é refletida no estado em memória.
 
 **Ref.:** ARQUITETURA §2.1, §3. **Peso:** 1,0 pt (backend) + reforça 2,0 pts (MQTT).
 
@@ -718,10 +719,10 @@ ESP32 (Wokwi) --publish--> test.mosquitto.org:1883 --bridge--> Mosquitto local -
 
 **Critério de aceite**
 
-- [ ] `get_latest` devolve a leitura mais recente com todas as grandezas presentes.
-- [ ] `get_history` com `range=6h` devolve no máximo ~360 pontos por grandeza.
-- [ ] `range=abc` é rejeitado com erro claro, sem chegar no banco.
-- [ ] Tanque sem dado nenhum devolve estrutura vazia, não exceção.
+- [x] `get_latest` devolve a leitura mais recente com todas as grandezas presentes.
+- [x] `get_history` com `range=6h` devolve no máximo ~360 pontos por grandeza.
+- [x] `range=abc` é rejeitado com erro claro, sem chegar no banco.
+- [x] Tanque sem dado nenhum devolve estrutura vazia, não exceção.
 
 **Ref.:** ARQUITETURA §4, §6. **Peso:** parte de 1,5 pts + habilita o dashboard.
 
@@ -750,11 +751,11 @@ ESP32 (Wokwi) --publish--> test.mosquitto.org:1883 --bridge--> Mosquitto local -
 
 **Critério de aceite**
 
-- [ ] `uvicorn app.main:app --reload` sobe API e ingestor no mesmo processo.
-- [ ] Os 6 endpoints respondem no formato da ARQUITETURA §6.
-- [ ] `/api/health` acusa `degraded`/503 quando o InfluxDB está parado.
-- [ ] `/docs` abre e permite testar cada rota.
-- [ ] Chamada a partir do front (`localhost:5173`) não é bloqueada por CORS.
+- [x] `uvicorn app.main:app --reload` sobe API e ingestor no mesmo processo.
+- [x] Os 6 endpoints respondem no formato da ARQUITETURA §6.
+- [x] `/api/health` acusa `degraded`/503 quando o InfluxDB está parado.
+- [x] `/docs` abre e permite testar cada rota.
+- [x] Chamada a partir do front (`localhost:5173`) não é bloqueada por CORS.
 
 **Ref.:** ARQUITETURA §6. **Peso:** 1,0 pt (backend).
 
@@ -780,9 +781,9 @@ ESP32 (Wokwi) --publish--> test.mosquitto.org:1883 --bridge--> Mosquitto local -
 
 **Critério de aceite**
 
-- [ ] Duas abas do navegador abertas recebem a mesma leitura ao mesmo tempo.
-- [ ] Fechar uma aba não afeta a outra nem gera erro no log do servidor.
-- [ ] Mensagem chega em menos de 1 s depois da publicação MQTT.
+- [x] Duas abas do navegador abertas recebem a mesma leitura ao mesmo tempo.
+- [x] Fechar uma aba não afeta a outra nem gera erro no log do servidor.
+- [x] Mensagem chega em menos de 1 s depois da publicação MQTT.
 
 **Ref.:** ARQUITETURA §6. **Peso:** parte de 1,0 pt (dashboard).
 
@@ -813,9 +814,9 @@ ESP32 (Wokwi) --publish--> test.mosquitto.org:1883 --bridge--> Mosquitto local -
 
 **Critério de aceite**
 
-- [ ] `pytest` passa 100 % verde.
-- [ ] `python tools/fake_device.py` alimenta o dashboard com o Wokwi desligado.
-- [ ] O simulador consegue forçar um cenário de alerta sob demanda.
+- [x] `pytest` passa 100 % verde.
+- [x] `python tools/fake_device.py` alimenta o dashboard com o Wokwi desligado.
+- [x] O simulador consegue forçar um cenário de alerta sob demanda.
 
 **Peso:** rede de segurança para 1,0 + 1,5 pts.
 
@@ -854,9 +855,9 @@ ESP32 (Wokwi) --publish--> test.mosquitto.org:1883 --bridge--> Mosquitto local -
 
 **Critério de aceite**
 
-- [ ] `npm run dev` abre em `http://localhost:5173`.
-- [ ] `npm run build` conclui **sem nenhum erro de tipo**.
-- [ ] `strict: true` ativo e nenhum `any` explícito no código entregue.
+- [x] `npm run dev` abre em `http://localhost:5173`.
+- [x] `npm run build` conclui **sem nenhum erro de tipo**.
+- [x] `strict: true` ativo e nenhum `any` explícito no código entregue.
 
 **Peso:** parte de 2,0 pts.
 
@@ -883,7 +884,7 @@ ESP32 (Wokwi) --publish--> test.mosquitto.org:1883 --bridge--> Mosquitto local -
 
 **Critério de aceite**
 
-- [ ] Nenhum `any` nas assinaturas.
+- [x] Nenhum `any` nas assinaturas.
 - [ ] Erro 503 do backend vira mensagem amigável, não tela branca.
 - [ ] Trocar `VITE_API_BASE_URL` muda o destino das chamadas sem editar código.
 
