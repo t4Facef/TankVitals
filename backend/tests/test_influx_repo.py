@@ -73,6 +73,20 @@ def test_stats_format_and_count(repository):
         "metrics": {"ph": {"min": 7, "max": 8, "avg": 7.5, "last": 8}}}
 
 
+def test_stats_count_preserves_group_key(repository):
+    """O map do count precisa de `r with`, senao a contagem volta nula.
+
+    `map(fn: (r) => ({_value: 1}))` devolve um record sem `device_id`, que e a
+    chave do grupo naquele ponto do pipeline; o Flux descarta todas as linhas
+    em silencio e o `sum()` seguinte emite _value=None, derrubando get_stats
+    com TypeError. Os outros testes daqui mockam o query_api, entao nao pegam
+    isso -- este guarda a semantica do Flux gerado.
+    """
+    repository.get_stats("tanque-01")
+    query = repository.query_api.query.call_args.args[0]
+    assert "{r with _value: 1}" in query
+
+
 def test_empty_results(repository):
     assert repository.get_latest("missing") is None
     assert repository.list_tanks() == []

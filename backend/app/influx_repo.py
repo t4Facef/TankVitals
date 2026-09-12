@@ -224,7 +224,7 @@ class InfluxRepository:
             base |> keep(columns: ["_time", "device_id"])
                 |> group(columns: ["device_id"])
                 |> unique(column: "_time")
-                |> map(fn: (r) => ({{_value: 1}}))
+                |> map(fn: (r) => ({{r with _value: 1}}))
                 |> group() |> sum() |> yield(name: "count")
         '''
         result = {"tank_id": tank_id, "range": range_, "count": 0, "metrics": {}}
