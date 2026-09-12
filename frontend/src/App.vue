@@ -93,16 +93,13 @@ async function bootstrap() {
   }
 }
 
+// O backend e a fonte dos limites (ARQUITETURA §5); os DEFAULT_THRESHOLDS
+// entram apenas para a grandeza que a API nao mandar.
 function normalizeThresholds(input: Thresholds): Thresholds {
   const merged: Thresholds = { ...DEFAULT_THRESHOLDS }
 
   for (const key of metricKeys) {
-    if (input[key]) {
-      merged[key] = {
-        ...DEFAULT_THRESHOLDS[key],
-        ...input[key],
-      }
-    }
+    if (input[key]) merged[key] = input[key]
   }
 
   return merged
@@ -248,7 +245,7 @@ onMounted(() => {
             </div>
             <span class="small-note">máximo de 50 registros</span>
           </div>
-          <HistoryTable :history="history" :metric="selectedMetric" />
+          <HistoryTable :history="history" :metric="selectedMetric" :threshold="currentThreshold" />
         </div>
 
         <div class="panel">

@@ -55,21 +55,18 @@ export interface Stats {
   metrics: Partial<Record<MetricKey, StatsMetric>>
 }
 
-export interface ThresholdRange {
-  min?: number
-  max?: number
-  unit?: string
-}
-
+/**
+ * Formato de `GET /api/thresholds` (ARQUITETURA §6, "Formatos auxiliares").
+ *
+ * Os limites moram no backend (`app/config.py`) e chegam por aqui — o front
+ * não repete número de faixa. `null` significa "não existe esse limite":
+ * nível não tem alerta por valor alto, por exemplo.
+ */
 export interface MetricThreshold {
-  criticalBelow?: number
-  warningBelow?: number
-  safeMin?: number
-  safeMax?: number
-  warningAbove?: number
-  criticalAbove?: number
-  unit: string
-  label: string
+  ok_min: number | null
+  ok_max: number | null
+  crit_min: number | null
+  crit_max: number | null
 }
 
 export type Thresholds = Partial<Record<MetricKey, MetricThreshold>>
@@ -133,40 +130,8 @@ export const METRIC_META: Record<MetricKey, {
 }
 
 export const DEFAULT_THRESHOLDS: Thresholds = {
-  temperature_c: {
-    criticalBelow: 22,
-    warningBelow: 24,
-    safeMin: 24,
-    safeMax: 28,
-    warningAbove: 28,
-    criticalAbove: 30,
-    unit: '°C',
-    label: 'Temperatura',
-  },
-  ph: {
-    criticalBelow: 6,
-    warningBelow: 6.5,
-    safeMin: 6.5,
-    safeMax: 8,
-    warningAbove: 8,
-    criticalAbove: 8.5,
-    unit: 'pH',
-    label: 'pH',
-  },
-  level_pct: {
-    criticalBelow: 15,
-    warningBelow: 30,
-    safeMin: 30,
-    safeMax: 100,
-    unit: '%',
-    label: 'Nível',
-  },
-  turbidity_ntu: {
-    safeMin: 0,
-    safeMax: 40,
-    warningAbove: 40,
-    criticalAbove: 60,
-    unit: 'NTU',
-    label: 'Turbidez',
-  },
+  temperature_c: { ok_min: 24, ok_max: 28, crit_min: 22, crit_max: 30 },
+  ph: { ok_min: 6.5, ok_max: 8, crit_min: 6, crit_max: 8.5 },
+  level_pct: { ok_min: 30, ok_max: null, crit_min: 15, crit_max: null },
+  turbidity_ntu: { ok_min: 0, ok_max: 40, crit_min: 0, crit_max: 60 },
 }

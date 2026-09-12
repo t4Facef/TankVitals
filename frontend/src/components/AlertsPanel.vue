@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { AlertLevel, HistorySeries, MetricKey, MetricThreshold } from '../types'
 import { METRIC_META } from '../types'
+import { classifyMetric, LEVEL_TEXT } from '../alerts'
 
 const props = defineProps<{
   history: HistorySeries | null
@@ -20,7 +21,7 @@ const alerts = computed<AlertItem[]>(() => {
 
   for (const series of props.history?.series ?? []) {
     for (const point of series.points) {
-      const level = classify(series.metric, point.v, props.thresholds[series.metric])
+      const level = classifyMetric(series.metric, point.v, props.thresholds[series.metric])
       if (level !== 'ok') {
         result.push({
           metric: series.metric,
@@ -37,32 +38,6 @@ const alerts = computed<AlertItem[]>(() => {
     .slice(0, 30)
 })
 
-function classify(
-  metric: MetricKey,
-  value: number,
-  threshold?: MetricThreshold,
-): AlertLevel {
-  if (!threshold) return 'ok'
-
-  if (metric === 'level_pct') {
-    if (threshold.criticalBelow !== undefined && value < threshold.criticalBelow) return 'critico'
-    if (threshold.warningBelow !== undefined && value < threshold.warningBelow) return 'atencao'
-    return 'ok'
-  }
-
-  if (threshold.criticalBelow !== undefined && value < threshold.criticalBelow) return 'critico'
-  if (threshold.warningBelow !== undefined && value < threshold.warningBelow) return 'atencao'
-  if (threshold.criticalAbove !== undefined && value > threshold.criticalAbove) return 'critico'
-  if (threshold.warningAbove !== undefined && value >= threshold.warningAbove) return 'atencao'
-
-  return 'ok'
-}
-
-const levelText: Record<AlertLevel, string> = {
-  ok: 'Normal',
-  atencao: 'Atenção',
-  critico: 'Crítico',
-}
 
 function formatDate(time: string): string {
   return new Date(time).toLocaleString('pt-BR', {
@@ -103,7 +78,7 @@ function formatDate(time: string): string {
           {{ METRIC_META[alert.metric].unit }}
         </div>
         <span :class="['table-level', `badge-${alert.level}`]">
-          {{ levelText[alert.level] }}
+          {{ LEVEL_TEXT[alert.level] }}
         </span>
       </div>
     </div>

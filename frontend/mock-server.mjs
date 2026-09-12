@@ -150,11 +150,12 @@ function estatisticas(range) {
   return { tank_id: TANK_ID, range, count: h.series[0].points.length, metrics }
 }
 
+// Mesmo formato do backend real (ARQUITETURA §6, "Formatos auxiliares").
 const THRESHOLDS = {
-  temperature_c: { criticalBelow: 22, warningBelow: 24, safeMin: 24, safeMax: 28, warningAbove: 28, criticalAbove: 30, unit: '°C', label: 'Temperatura' },
-  ph: { criticalBelow: 6, warningBelow: 6.5, safeMin: 6.5, safeMax: 8, warningAbove: 8, criticalAbove: 8.5, unit: 'pH', label: 'pH' },
-  level_pct: { criticalBelow: 15, warningBelow: 30, safeMin: 30, safeMax: 100, unit: '%', label: 'Nível' },
-  turbidity_ntu: { safeMin: 0, safeMax: 40, warningAbove: 40, criticalAbove: 60, unit: 'NTU', label: 'Turbidez' },
+  temperature_c: { ok_min: 24, ok_max: 28, crit_min: 22, crit_max: 30 },
+  ph: { ok_min: 6.5, ok_max: 8, crit_min: 6, crit_max: 8.5 },
+  level_pct: { ok_min: 30, ok_max: null, crit_min: 15, crit_max: null },
+  turbidity_ntu: { ok_min: 0, ok_max: 40, crit_min: 0, crit_max: 60 },
 }
 
 // --- HTTP --------------------------------------------------------------------
@@ -175,7 +176,7 @@ const servidor = createServer((req, res) => {
   const range = url.searchParams.get('range') ?? '6h'
 
   if (p === '/api/health') {
-    return json(res, { status: 'ok', mqtt: 'connected', influxdb: 'ok', mock: true })
+    return json(res, { status: 'ok', mqtt: true, influxdb: true, mock: true })
   }
   if (p === '/api/thresholds') return json(res, THRESHOLDS)
   if (p === '/api/tanks') {

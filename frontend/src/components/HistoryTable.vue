@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { HistorySeries, MetricKey } from '../types'
+import type { HistorySeries, MetricKey, MetricThreshold } from '../types'
 import { METRIC_META } from '../types'
+import { classifyMetric, LEVEL_TEXT } from '../alerts'
 
 const props = defineProps<{
   history: HistorySeries | null
   metric: MetricKey
+  threshold?: MetricThreshold
 }>()
 
 const rows = computed(() => {
@@ -32,30 +34,12 @@ function formatDate(date: Date): string {
   })
 }
 
-function levelFor(value: number): 'ok' | 'atencao' | 'critico' {
-  if (props.metric === 'temperature_c') {
-    if (value < 22 || value > 30) return 'critico'
-    if (value < 24 || value > 28) return 'atencao'
-  } else if (props.metric === 'ph') {
-    if (value < 6 || value > 8.5) return 'critico'
-    if (value < 6.5 || value > 8) return 'atencao'
-  } else if (props.metric === 'level_pct') {
-    if (value < 15) return 'critico'
-    if (value < 30) return 'atencao'
-  } else if (props.metric === 'turbidity_ntu') {
-    if (value > 60) return 'critico'
-    if (value >= 40) return 'atencao'
-  }
-  return 'ok'
+function levelFor(value: number) {
+  return classifyMetric(props.metric, value, props.threshold)
 }
 
 const meta = computed(() => METRIC_META[props.metric])
 
-const levelText = {
-  ok: 'Normal',
-  atencao: 'Atenção',
-  critico: 'Crítico',
-}
 </script>
 
 <template>
@@ -81,7 +65,7 @@ const levelText = {
           <td>{{ meta.unit }}</td>
           <td>
             <span :class="['table-level', `badge-${levelFor(row.value)}`]">
-              {{ levelText[levelFor(row.value)] }}
+              {{ LEVEL_TEXT[levelFor(row.value)] }}
             </span>
           </td>
         </tr>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { AlertLevel, MetricThreshold, MetricValue } from '../types'
+import type { MetricThreshold, MetricValue } from '../types'
+import { LEVEL_TEXT, safeRangeLabel } from '../alerts'
 
 const props = defineProps<{
   icon: string
@@ -8,12 +9,6 @@ const props = defineProps<{
   metric: MetricValue | undefined
   threshold?: MetricThreshold
 }>()
-
-const levelLabel: Record<AlertLevel, string> = {
-  ok: 'Normal',
-  atencao: 'Atenção',
-  critico: 'Crítico',
-}
 
 const valueLabel = computed(() => {
   if (!props.metric || props.metric.value === null || Number.isNaN(props.metric.value)) return '—'
@@ -24,31 +19,8 @@ const valueLabel = computed(() => {
   })
 })
 
-const safeRange = computed(() => {
-  const t = props.threshold
-  if (!t) return 'faixa segura não disponível'
-
-  if (t.safeMax !== undefined && t.safeMin !== undefined) {
-    return `ideal: ${format(t.safeMin)}–${format(t.safeMax)} ${t.unit}`
-  }
-
-  if (t.safeMax !== undefined) {
-    return `ideal: < ${format(t.safeMax)} ${t.unit}`
-  }
-
-  if (t.safeMin !== undefined) {
-    return `ideal: ≥ ${format(t.safeMin)} ${t.unit}`
-  }
-
-  return 'faixa segura não disponível'
-})
-
-function format(value: number): string {
-  return value.toLocaleString('pt-BR', {
-    minimumFractionDigits: props.metric?.unit === 'pH' ? 1 : 0,
-    maximumFractionDigits: props.metric?.unit === 'pH' ? 2 : 1,
-  })
-}
+// A unidade vem da leitura; se ela ainda nao chegou, o card mostra so o valor.
+const safeRange = computed(() => safeRangeLabel(props.threshold, props.metric?.unit ?? ''))
 </script>
 
 <template>
@@ -57,7 +29,7 @@ function format(value: number): string {
       <div class="metric-icon">{{ icon }}</div>
       <span class="metric-label">{{ label }}</span>
       <span v-if="metric" :class="['level-badge', `badge-${metric.level}`]">
-        {{ levelLabel[metric.level] }}
+        {{ LEVEL_TEXT[metric.level] }}
       </span>
     </div>
 

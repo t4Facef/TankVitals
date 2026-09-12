@@ -43,8 +43,9 @@ const currentSeries = computed(() =>
 
 const labels = computed(() => currentSeries.value?.points.map((point) => new Date(point.t)) ?? [])
 
-const safeMin = computed(() => props.threshold?.safeMin)
-const safeMax = computed(() => props.threshold?.safeMax)
+// Linhas tracejadas da faixa segura, com os limites vindos da API.
+const safeMin = computed(() => props.threshold?.ok_min ?? undefined)
+const safeMax = computed(() => props.threshold?.ok_max ?? undefined)
 
 const chartData = computed<ChartData<'line', number[], Date>>(() => {
   const points = currentSeries.value?.points ?? []
