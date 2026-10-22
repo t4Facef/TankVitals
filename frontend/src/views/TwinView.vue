@@ -8,6 +8,7 @@ import { formatAge } from '../composables/useDeviceState'
 import { ITEM_LEVEL_TEXT, useItemLevel, type ItemLevel } from '../composables/useItemLevel'
 import { useLiveValues } from '../composables/useLiveValues'
 import { useNow } from '../composables/useNow'
+import { usePreferences } from '../composables/usePreferences'
 import TwinPanel from '../components/TwinPanel.vue'
 import { KIND_ICON, LEVEL_ICON, UI_ICON } from '../icons'
 import { STALE_AFTER_MS } from '../live/freshness'
@@ -68,6 +69,13 @@ onMounted(() => {
   }
   scene.value.setDevices(devicesStore.active)
 })
+
+// Contraste novo: a cena pega as cores dos tokens de novo.
+const preferences = usePreferences()
+watch(
+  () => preferences.contrast,
+  () => scene.value?.refreshPalette(),
+)
 
 // O cadastro mudou (dispositivo novo, desativado): só então a cena remonta os itens.
 watch(

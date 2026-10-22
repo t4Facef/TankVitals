@@ -97,6 +97,7 @@ export class TwinScene {
   private tank!: TankModel
   private items = new Map<string, SceneItem>()
   private nozzles = new Map<string, Object3D>()
+  private devices: Device[] = []
   private flows: Array<{ spec: PipeSpec; flow: PipeFlow }> = []
   private bubbles!: Bubbles
   private refillJet!: Stream
@@ -169,6 +170,7 @@ export class TwinScene {
 
   /** Monta os itens do cadastro. Chamado quando o cadastro muda, nunca por mensagem. */
   setDevices(devices: Device[]): void {
+    this.devices = devices
     this.clear(this.dynamic)
     this.items.clear()
     this.flows = []
@@ -216,6 +218,19 @@ export class TwinScene {
     const box = new Box3().setFromObject(item.model.root).expandByScalar(0.06)
     this.selection = new Box3Helper(box, this.palette['--accent'])
     this.scene.add(this.selection)
+  }
+
+  /**
+   * Troca de contraste: as cores da cena vêm dos tokens do CSS, então ela se
+   * remonta com a paleta nova. Acontece quando a pessoa muda no menu, nunca
+   * por mensagem.
+   */
+  refreshPalette(): void {
+    this.palette = readPalette()
+    this.clear(this.fixed)
+    this.nozzles.clear()
+    this.buildFixed()
+    this.setDevices(this.devices)
   }
 
   dispose(): void {
@@ -598,6 +613,8 @@ export class TwinScene {
       const mesh = object as Mesh
       mesh.geometry?.dispose()
       for (const material of [mesh.material ?? []].flat()) material.dispose()
+      // A luz do sol guarda o mapa de sombra na placa de vídeo.
+      if (object instanceof DirectionalLight) object.dispose()
       if (object instanceof CSS2DObject) object.element.remove()
     })
     group.clear()
