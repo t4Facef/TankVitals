@@ -153,7 +153,7 @@ function kindNote(device: Device): string {
 
 .device-table {
   width: 100%;
-  min-width: 760px;
+  min-width: 720px;
   border-collapse: collapse;
   font-size: 0.875rem;
 }
@@ -266,15 +266,18 @@ tbody:first-of-type .device-group th {
 }
 
 .device-situation.is-never .device-dot {
-  border: 2px dashed var(--muted);
-}
-
-.device-situation.is-inactive .device-dot {
   border: 2px solid var(--muted);
 }
 
+/* Desativado: um traço no lugar da bolinha. */
+.device-situation.is-inactive .device-dot {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--muted);
+}
+
 .device-reading {
-  min-width: 220px;
+  min-width: 170px;
 }
 
 .device-reading .table-level {
@@ -308,7 +311,7 @@ tbody:first-of-type .device-group th {
   align-items: center;
   gap: 6px;
   min-height: 36px;
-  padding: 0 12px;
+  padding: 0 10px;
   border: var(--bw) solid var(--field);
   border-radius: var(--radius-sm);
   color: var(--ink);
