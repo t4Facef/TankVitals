@@ -6,6 +6,7 @@ import BrandMark from '../components/BrandMark.vue'
 import UserMenu from '../components/UserMenu.vue'
 import { MOCK } from '../config'
 import { LIVE_STATUS_LABEL } from '../live/socket'
+import { setMockFeedPaused } from '../mock/feed'
 import { MENU_GROUPS, PAGES } from '../router/pages'
 import { useAuthStore } from '../stores/auth'
 import { useLiveStore } from '../stores/live'
@@ -14,6 +15,13 @@ const auth = useAuthStore()
 const live = useLiveStore()
 const route = useRoute()
 const menuOpen = ref(false)
+
+// Modo simulado: parar o "simulador" para ver as telas avisarem "sem dados".
+const feedPaused = ref(false)
+function toggleFeed() {
+  feedPaused.value = !feedPaused.value
+  setMockFeedPaused(feedPaused.value)
+}
 
 // O menu só mostra o que o papel da pessoa pode abrir.
 const groups = computed(() =>
@@ -85,9 +93,12 @@ onUnmounted(() => live.disconnect())
           {{ LIVE_STATUS_LABEL[live.status] }}
         </div>
 
-        <p v-if="MOCK" class="mock-note">
-          Modo simulado: o login e os dados ao vivo são gerados no navegador.
-        </p>
+        <div v-if="MOCK" class="mock-note">
+          <p>Modo simulado: o login e os dados ao vivo são gerados no navegador.</p>
+          <button type="button" :aria-pressed="feedPaused" @click="toggleFeed">
+            {{ feedPaused ? 'Religar o simulador' : 'Parar o simulador' }}
+          </button>
+        </div>
 
         <UserMenu />
       </div>
@@ -265,12 +276,35 @@ onUnmounted(() => live.disconnect())
 
 
 .mock-note {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   padding: 8px 10px;
   border: var(--bw) dashed var(--night-line);
   border-radius: var(--radius-sm);
   color: var(--night-muted);
   font-size: 0.75rem;
   line-height: 1.4;
+}
+
+.mock-note button {
+  min-height: 34px;
+  padding: 0 10px;
+  border: var(--bw) solid var(--night-line);
+  border-radius: 8px;
+  color: var(--night-ink);
+  font-size: 0.75rem;
+  font-weight: var(--fw-heavy);
+  background: var(--night-2);
+}
+
+.mock-note button:hover {
+  background: var(--night-active);
+}
+
+.mock-note button[aria-pressed='true'] {
+  color: var(--night);
+  background: var(--nivel-atencao);
 }
 
 .content {
