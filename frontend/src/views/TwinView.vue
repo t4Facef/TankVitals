@@ -8,7 +8,8 @@ import { formatAge } from '../composables/useDeviceState'
 import { ITEM_LEVEL_TEXT, useItemLevel, type ItemLevel } from '../composables/useItemLevel'
 import { useLiveValues } from '../composables/useLiveValues'
 import { useNow } from '../composables/useNow'
-import { LEVEL_ICON, UI_ICON } from '../icons'
+import TwinPanel from '../components/TwinPanel.vue'
+import { KIND_ICON, LEVEL_ICON, UI_ICON } from '../icons'
 import { STALE_AFTER_MS } from '../live/freshness'
 import { TwinScene } from '../scene/TwinScene'
 import { useDevicesStore } from '../stores/devices'
@@ -19,7 +20,7 @@ const live = useLiveStore()
 const now = useNow()
 const { value, state } = useLiveValues()
 const { alerts } = useAlerts()
-const { level } = useItemLevel(() => alerts.value)
+const { level, insight } = useItemLevel(() => alerts.value)
 
 /** A cena congela se nada chegar por 10 s, de nenhum dispositivo (WEB-06). */
 function isFrozen(at: number): boolean {
@@ -32,6 +33,21 @@ const silentFor = computed(() =>
 
 const LEGEND: ItemLevel[] = ['ok', 'atencao', 'critico', 'vazio']
 
+// --- item escolhido (WEB-08) ----------------------------------------------------
+
+const selectedId = ref<string | null>(null)
+const selected = computed(() => devicesStore.active.find((device) => device.id === selectedId.value) ?? null)
+
+function select(id: string | null) {
+  selectedId.value = id
+}
+
+// A cena desenha o destaque; um item que saiu do cadastro fecha o painel.
+watch(selectedId, (id) => scene.value?.select(id))
+watch(selected, (device) => {
+  if (!device && selectedId.value) selectedId.value = null
+})
+
 const host = ref<HTMLElement | null>(null)
 const scene = shallowRef<TwinScene | null>(null)
 const failed = ref(false)
@@ -40,7 +56,11 @@ onMounted(() => {
   void devicesStore.load()
   if (!host.value) return
   try {
-    scene.value = new TwinScene(host.value, { value, state, level, frozen: () => isFrozen(Date.now()) })
+    scene.value = new TwinScene(
+      host.value,
+      { value, state, level, frozen: () => isFrozen(Date.now()) },
+      { onSelect: select },
+    )
   } catch {
     // Sem WebGL (driver, máquina virtual, navegador antigo) não há cena.
     failed.value = true
@@ -73,6 +93,7 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
+    <div class="twin-layout">
     <section class="panel twin-panel" aria-label="Cena 3D do tanque">
       <div ref="host" class="twin-host" role="img" aria-label="Cena 3D do tanque com os sensores, a bomba e os atuadores" />
 
@@ -100,14 +121,107 @@ onBeforeUnmount(() => {
         <span>A cena precisa de WebGL. Tente outro navegador ou ative a aceleração de hardware.</span>
       </div>
     </section>
+
+    <aside class="panel twin-aside">
+      <TwinPanel
+        v-if="selected"
+        :key="selected.id"
+        :device="selected"
+        :level="level(selected)"
+        :insight="insight(selected.id)"
+        @close="select(null)"
+      />
+
+      <template v-else>
+        <h3 class="twin-aside-title">Itens da cena</h3>
+        <p class="small-note">Clique num item na cena, no rótulo dele ou aqui para ver a leitura, a saúde e os comandos.</p>
+        <ul class="twin-items">
+          <li v-for="device in devicesStore.active" :key="device.id">
+            <button type="button" @click="select(device.id)">
+              <component :is="KIND_ICON[device.kind]" :size="17" aria-hidden="true" />
+              <span>{{ device.name }}</span>
+              <span :class="['table-level', `badge-${level(device)}`]">{{ ITEM_LEVEL_TEXT[level(device)] }}</span>
+            </button>
+          </li>
+        </ul>
+      </template>
+    </aside>
+    </div>
   </main>
 </template>
 
 <style scoped>
+/* A cena e, ao lado, a lista de itens ou o painel do item escolhido. */
+.twin-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  align-items: start;
+  gap: 16px;
+}
+
 .twin-panel {
   position: relative;
   padding: 0;
   overflow: hidden;
+}
+
+.twin-aside {
+  max-height: min(68vh, 620px);
+  overflow-y: auto;
+}
+
+.twin-aside-title {
+  margin-bottom: 4px;
+  font-size: 1.0625rem;
+  font-weight: var(--fw-heavy);
+}
+
+.twin-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.twin-items button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: var(--bw) solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-weight: var(--fw-bold);
+  text-align: left;
+  background: var(--surface);
+}
+
+.twin-items button:hover {
+  border-color: var(--field);
+  background: var(--surface-2);
+}
+
+.twin-items button svg {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.twin-items button span:first-of-type {
+  flex: 1;
+}
+
+@media (max-width: 1100px) {
+  .twin-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .twin-aside {
+    max-height: none;
+  }
 }
 
 .twin-host {
@@ -240,6 +354,17 @@ onBeforeUnmount(() => {
 .twin-label.is-fixture {
   color: var(--muted);
   border-style: dashed;
+}
+
+/* Rótulo de item: clicável, abre o painel. */
+.twin-label.is-item {
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.twin-label.is-selected {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* O estado aparece na borda e escrito no texto do rótulo. */
