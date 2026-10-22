@@ -96,6 +96,8 @@ export class TwinScene {
   private t = 0
   /** Nível da água desenhado agora, em %; anda suave até a leitura. */
   private shownLevel: number | null = null
+  /** Quem pediu menos movimento no sistema não vê a bomba tremer; a cor e o painel continuam. */
+  private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
   constructor(container: HTMLElement, source: TwinSource) {
     this.container = container
@@ -281,6 +283,7 @@ export class TwinScene {
       this.t += dt
       this.updateWater(dt)
       this.updateActuators(dt)
+      this.shakePump()
       this.pulseCritical()
     }
 
@@ -380,6 +383,24 @@ export class TwinScene {
         fan.rotation[axis] += dt * 18
       }
     }
+  }
+
+  /**
+   * Quanto mais vibração, mais a bomba treme (WEB-07). Saudável, perto de
+   * 1 mm/s, quase não mexe; perto dos 4,5 mm/s do crítico, treme forte. Só o
+   * corpo treme: os bocais ficam presos nos tubos.
+   */
+  private shakePump(): void {
+    const body = this.items.get(TANK.vibration.device)?.model.parts.body
+    if (!body) return
+    const vibration = this.source.value(TANK.vibration.device, TANK.vibration.field)
+    const running = this.source.state(TANK.recirculation.device, TANK.recirculation.field) === true
+    const amplitude =
+      !running || vibration === null || this.reducedMotion ? 0 : Math.min(1.4, Math.max(0, (vibration - 0.5) / 4)) * 0.03
+    // Senos de frequências diferentes: tremor que não se repete a cada quadro.
+    const t = this.t
+    body.position.set(amplitude * Math.sin(t * 53), amplitude * 0.4 * Math.sin(t * 61 + 2), amplitude * Math.sin(t * 47 + 1))
+    body.rotation.z = amplitude * 1.5 * Math.sin(t * 43)
   }
 
   /** Quanto corre num tubo: a vazão sobre a cheia, ou 1 e 0 pelo estado do atuador. */
