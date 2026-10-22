@@ -10,9 +10,11 @@ import type {
   Rule,
   RuleUpdate,
 } from '../domain/devices'
-import { firstIssue, validateDevice, validateRule } from '../domain/registry'
+import type { AuditPage, AuditQuery } from '../domain/audit'
+import { describeRange, firstIssue, validateDevice, validateRule } from '../domain/registry'
 import { useAuthStore, type Role } from '../stores/auth'
 import type { HistoryRange } from '../types'
+import { queryAudit, recordAudit } from './audit'
 import { FAULT_MODES, getMockPlant } from './plant'
 import { mockRegistry } from './registry'
 
@@ -33,6 +35,10 @@ function wait(ms: number): Promise<void> {
 /** O mesmo que o `require_role` da API (BACK-03): 403 para quem não pode. */
 function requireRole(role: Role): void {
   if (!useAuthStore().hasRole(role)) throw new ApiError('Seu papel não permite esta ação.', 403)
+}
+
+function currentUser(): string {
+  return useAuthStore().username ?? 'desconhecido'
 }
 
 export async function mockGetDevices(): Promise<Device[]> {
@@ -57,6 +63,14 @@ export async function mockCreateDevice(input: DeviceInput): Promise<Device> {
   }
   mockRegistry.devices.push(device)
   getMockPlant().applyRegistry()
+  recordAudit({
+    user: currentUser(),
+    type: 'registry',
+    action: 'device_created',
+    target: device.id,
+    detail: device.name,
+    ok: true,
+  })
   return structuredClone(device)
 }
 
@@ -72,6 +86,14 @@ export async function mockUpdateDevice(id: string, update: DeviceUpdate): Promis
 
   mockRegistry.devices[index] = next
   getMockPlant().applyRegistry()
+  recordAudit({
+    user: currentUser(),
+    type: 'registry',
+    action: current.active && !next.active ? 'device_deactivated' : 'device_updated',
+    target: id,
+    detail: next.fields.map((f) => `${f.short}: ${describeRange(f.range, f.unit)}`).join(' · ') || null,
+    ok: true,
+  })
   return structuredClone(next)
 }
 
@@ -93,6 +115,15 @@ export async function mockUpdateRule(id: string, update: RuleUpdate): Promise<Ru
   rule.updated_at = new Date().toISOString()
   rule.updated_by = useAuthStore().username
   getMockPlant().applyRegistry()
+  const n = (v: number) => v.toLocaleString('pt-BR')
+  recordAudit({
+    user: currentUser(),
+    type: 'registry',
+    action: 'rule_updated',
+    target: id,
+    detail: `liga < ${n(rule.on_below)} · desliga ≥ ${n(rule.off_at)}`,
+    ok: true,
+  })
   return structuredClone(rule)
 }
 
@@ -123,5 +154,19 @@ export async function mockSendCommand(deviceId: string, request: CommandRequest)
     throw new ApiError('Modo de falha desconhecido.', 422)
   }
   window.setTimeout(() => getMockPlant().command(deviceId, request), COMMAND_DELAY_MS)
+  recordAudit({
+    user: currentUser(),
+    type: 'command',
+    action: 'command',
+    target: deviceId,
+    detail: request.value === undefined ? request.command : `${request.command} = ${String(request.value)}`,
+    ok: true,
+  })
   return { id: `mock-cmd-${Date.now()}`, status: 'sent' }
+}
+
+export async function mockGetAudit(query: AuditQuery): Promise<AuditPage> {
+  await wait(150)
+  requireRole('admin')
+  return queryAudit(query)
 }
