@@ -146,8 +146,10 @@ function kindNote(device: Device): string {
 </template>
 
 <style scoped>
-/* Tabela larga rola no próprio contêiner; a página nunca rola na horizontal. */
+/* Tabela larga rola no próprio contêiner; a página nunca rola na horizontal.
+   O `relative` prende aqui dentro o texto só para leitor de tela (absoluto). */
 .device-table-wrap {
+  position: relative;
   overflow-x: auto;
 }
 
