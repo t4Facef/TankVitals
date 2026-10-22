@@ -59,6 +59,9 @@ Quando o backend tiver as rotas do contrato abaixo, ponha `VITE_MOCK=false` no
 | `src/composables/useLiveValues.ts` | o "agora" de cada dispositivo, com "sem dados" depois de 10 s |
 | `src/components/ActuatorControl.vue` | o controle de atuador: estado, botão e "aguardando confirmação" |
 | `src/plant/layout.ts` | onde cada dispositivo do cadastro entra no desenho (e no 3D) |
+| `src/domain/registry.ts` | as regras do cadastro (id, faixas, limites da regra), usadas pelo formulário e pelo modo simulado |
+| `src/composables/useDeviceState.ts` | a situação de cada dispositivo: online, parou ou sem dados, e o pior nível das faixas |
+| `src/views/DevicesView.vue` | a tela Dispositivos (WEB-03): lista ao vivo, formulário do admin e aba de regras |
 
 **Para fazer uma tela:** crie a view em `src/views/` e aponte o `component` dela
 em `src/router/pages.ts`. Enquanto ela não existe, a rota mostra um placeholder
@@ -130,10 +133,19 @@ formatos estão em `src/domain/devices.ts` e o modo simulado
 | `POST /api/auth/login` | formulário `username` e `password`; devolve `{access_token, token_type}` | BACK-03 |
 | `POST /api/ws/ticket` | `{ticket}`, de uso único | BACK-04 |
 | `WS /ws/live?ticket=...` | um envelope `{id, ts, type, device, payload}` por mensagem: `telemetry`, `insight`, `alert`... | BACK-04 |
-| `GET /api/devices` | `[{id, name, kind, zone, active, fields, state_field, commands, control}]`; cada campo com `key, label, short, unit, decimals, range` | BACK-05 |
+| `GET /api/devices` | `[{id, name, kind, zone, active, fields, state_field, commands, control}]`; cada campo com `key, label, short, unit, decimals, range`. Vêm também os desativados (`active: false`) | BACK-05 |
+| `POST /api/devices` | (admin) corpo `{id, name, kind, zone, active, fields}`; a API completa `state_field`, `commands` e `control` pelo tipo e devolve o dispositivo. 409 para id repetido, 422 para faixa inválida | BACK-06 |
+| `PUT /api/devices/{id}` | (admin) corpo `{name, zone, active, fields}`; o id e o tipo não mudam. Devolve o dispositivo | BACK-06 |
+| `GET /api/rules` | `[{id, name, device, field, actuator, on_below, off_at, updated_at, updated_by}]` | BACK-06 |
+| `PUT /api/rules/{id}` | (admin) corpo `{on_below, off_at}`, com `off_at > on_below`; devolve a regra | BACK-06 |
 | `GET /api/history?range=6h` | `{range, from, to, step_s, series}`; cada série com `device, field, points` (uns 360 pontos) e `stats` (`count, min, max, avg, last, out_of_range_s`; nos campos de estado, `on_s` e `turn_ons`). `&device=od-01` filtra | BACK-05 |
 | `GET /api/alerts?status=all` | `[{id, device, field, level, message, value, opened_at, closed_at}]`, os mais novos primeiro | BACK-05 |
 | `POST /api/devices/{id}/command` | corpo `{command: "on", value: true}` (ou `inject_fault` e `repair`); devolve `{id, status: "sent"}`. O estado novo chega pela telemetria | IOT-04 |
+
+Nas rotas de admin, o modo simulado responde 403 para os outros papéis, como a
+API vai responder: esconder o botão na tela é conforto, quem barra é a API. As
+regras de validação do cadastro ficam em `src/domain/registry.ts`, e a mensagem
+de erro que a tela mostra é o `detail` da resposta.
 
 As estatísticas do histórico são calculadas sobre as leituras cruas, não sobre
 os pontos agregados: é delas que saem o "tempo fora da faixa" e o "quantas

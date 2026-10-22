@@ -177,6 +177,16 @@ p {
   min-height: 100vh;
 }
 
+/* Texto só para leitor de tela: cabeçalho de coluna de ações, por exemplo. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* ---------------------------------------------------------------------------
    Barra de status (topo do dashboard)
    --------------------------------------------------------------------------- */
@@ -306,6 +316,30 @@ h1 {
   width: min(1180px, calc(100% - 2 * clamp(16px, 3vw, 28px)));
   margin: 0 auto;
   padding: 26px 0 32px;
+}
+
+/* Cabeçalho das telas: título, uma linha do que a tela faz e a ação principal. */
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 16px;
+  margin-bottom: 18px;
+}
+
+.page-header h2 {
+  font-size: 1.75rem;
+  font-weight: var(--fw-heavy);
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+}
+
+.page-header p {
+  max-width: 640px;
+  margin-top: 6px;
+  color: var(--muted);
+  font-weight: 600;
 }
 
 .dashboard-toolbar {
@@ -1377,4 +1411,207 @@ h1 {
   .sparkline {
     width: 140px;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Botões, campos de formulário e diálogos (telas de cadastro, regras e
+   auditoria). Campo com borda de 3:1 contra o branco (`--field`) e rótulo
+   sempre visível em cima, nunca só placeholder.
+   --------------------------------------------------------------------------- */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 16px;
+  border: var(--bw) solid var(--field);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: var(--fw-heavy);
+  text-decoration: none;
+  background: var(--surface);
+}
+
+.button:hover:not(:disabled) {
+  border-color: var(--ink);
+  background: var(--surface-2);
+}
+
+.button-primary {
+  color: #ffffff;
+  border-color: var(--night);
+  background: var(--night);
+}
+
+.button-primary:hover:not(:disabled) {
+  border-color: var(--night-2);
+  background: var(--night-2);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.button .spinner {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+}
+
+.form-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: var(--fw-heavy);
+}
+
+.form-field input,
+.form-field select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 11px;
+  border: var(--bw) solid var(--field);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  background: var(--surface);
+}
+
+.form-field input:disabled {
+  color: var(--muted);
+  border-style: dashed;
+  background: var(--surface-2);
+}
+
+.form-field input[aria-invalid='true'] {
+  border: var(--bw-alert) solid var(--nivel-critico);
+}
+
+.form-hint {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.form-error {
+  color: var(--critico-ink);
+  font-size: 0.75rem;
+  font-weight: var(--fw-bold);
+  line-height: 1.4;
+}
+
+.form-alert {
+  padding: 10px 12px;
+  border: var(--bw) solid var(--nivel-critico);
+  border-radius: var(--radius-sm);
+  color: var(--critico-ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: #fbe3e0;
+}
+
+.form-success {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 11px 14px;
+  border: var(--bw) solid var(--nivel-ok);
+  border-radius: 12px;
+  color: var(--ok-ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: var(--ideal-wash);
+}
+
+.form-success button {
+  margin-left: auto;
+  padding: 4px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+}
+
+/* Diálogo: o <dialog> nativo prende o foco e fecha no Esc sozinho. */
+.app-dialog {
+  width: min(780px, calc(100vw - 24px));
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  border: var(--bw) solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 18px 48px rgba(10, 35, 55, 0.35);
+}
+
+.app-dialog::backdrop {
+  background: rgba(15, 40, 60, 0.55);
+}
+
+.app-dialog > form {
+  display: flex;
+  max-height: calc(100vh - 34px);
+  flex-direction: column;
+}
+
+.dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: var(--bw) solid var(--line-soft);
+}
+
+.dialog-head h2 {
+  font-size: 1.1875rem;
+  font-weight: var(--fw-heavy);
+}
+
+.dialog-close {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: var(--bw) solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  background: transparent;
+}
+
+.dialog-close:hover {
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px;
+  overflow-y: auto;
+}
+
+.dialog-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: var(--bw) solid var(--line-soft);
+  background: var(--surface-2);
+}
+
+.dialog-foot .form-alert {
+  flex: 1 1 100%;
 }

@@ -46,29 +46,6 @@ const page = computed(() => route.meta.page)
 </template>
 
 <style scoped>
-.page-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px 16px;
-  margin-bottom: 18px;
-}
-
-.page-header h2 {
-  font-size: 1.75rem;
-  font-weight: var(--fw-heavy);
-  letter-spacing: -0.015em;
-  line-height: 1.2;
-}
-
-.page-header p {
-  max-width: 640px;
-  margin-top: 6px;
-  color: var(--muted);
-  font-weight: 600;
-}
-
 .page-action {
   min-height: 42px;
   padding: 0 16px;

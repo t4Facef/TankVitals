@@ -1,7 +1,7 @@
 import { classify } from '../alerts'
 import { variableId, type Alert, type CommandRequest, type HistoryResponse, type Series } from '../domain/devices'
 import type { HistoryPoint, HistoryRange, MetricThreshold } from '../types'
-import { MOCK_DEVICES } from './registry'
+import { mockRegistry, SEED_DEVICES } from './registry'
 
 /**
  * Planta simulada do modo mock: o tanque, a bomba e os atuadores, com o
@@ -15,31 +15,49 @@ import { MOCK_DEVICES } from './registry'
  * Não é a física de verdade (essa é a IA-01): é só plausível, com a regra do
  * aerador (IOT-07), a reposição, a recirculação, a falha injetada (IOT-08) e
  * alertas de faixa, para as telas terem o que mostrar antes do backend.
+ *
+ * Simula os dispositivos do seed. As faixas, o "ativo" e os limites da regra
+ * vêm do cadastro de agora (`applyRegistry`), então editar pela tela muda os
+ * alertas e o aerador sem recarregar, como o enunciado pede.
  */
 
 interface Channel {
   device: string
   field: string
   decimals: number
+  /** Faixa e "ativo" do cadastro de agora: mudam pela tela Dispositivos. */
   range: MetricThreshold | null
+  active: boolean
   label: string
   unit: string
   /** Campo de estado (liga/desliga), guardado como 1 e 0. */
   isState: boolean
 }
 
-const CHANNELS: Channel[] = MOCK_DEVICES.flatMap((device) => [
+const CHANNELS: Channel[] = SEED_DEVICES.flatMap((device) => [
   ...device.fields.map((field) => ({
     device: device.id,
     field: field.key,
     decimals: field.decimals,
     range: field.range,
+    active: device.active,
     label: field.label,
     unit: field.unit,
     isState: false,
   })),
   ...(device.state_field
-    ? [{ device: device.id, field: device.state_field, decimals: 0, range: null, label: device.name, unit: '', isState: true }]
+    ? [
+        {
+          device: device.id,
+          field: device.state_field,
+          decimals: 0,
+          range: null,
+          active: device.active,
+          label: device.name,
+          unit: '',
+          isState: true,
+        },
+      ]
     : []),
 ])
 
@@ -100,6 +118,8 @@ export class MockPlant {
   private recirculation = true
   private fault: { mode: FaultMode; progress: number } | null = null
   private backfilling = true
+  /** Limites da regra do aerador, do cadastro (IOT-07). */
+  private aeratorRule = { onBelow: 5, offAt: 6.5 }
 
   private readonly values = new Float64Array(CHANNELS.length)
   private readonly previous = new Float64Array(CHANNELS.length)
@@ -121,12 +141,29 @@ export class MockPlant {
   onAlert: ((alert: Alert) => void) | null = null
 
   constructor(nowS = Math.floor(Date.now() / 1000)) {
+    this.applyRegistry()
     // O que tem mais de 24 h só aparece agregado (pontos de ~28 min no período
     // de 7 dias), então anda de 10 em 10 s: o nascimento cai para ~1/5.
     this.t = nowS - RANGE_S['7d']
     while (this.t < nowS - RANGE_S['24h']) this.advance(this.t + COARSE_STEP_S, COARSE_STEP_S)
     while (this.t < nowS - 1) this.advance(this.t + 1)
     this.backfilling = false
+  }
+
+  /**
+   * Relê faixas, "ativo" e a regra do cadastro do modo simulado. Desativar um
+   * dispositivo fecha os alertas dele sozinho: sem faixa a vigiar, as leituras
+   * contam como normais.
+   */
+  applyRegistry(): void {
+    const devices = new Map(mockRegistry.devices.map((device) => [device.id, device]))
+    for (const channel of CHANNELS) {
+      const device = devices.get(channel.device)
+      channel.active = device?.active ?? false
+      if (!channel.isState) channel.range = device?.fields.find((f) => f.key === channel.field)?.range ?? null
+    }
+    const rule = mockRegistry.rules.find((r) => r.actuator === 'aerador-01')
+    if (rule) this.aeratorRule = { onBelow: rule.on_below, offAt: rule.off_at }
   }
 
   /** Avança até `nowS`. Depois de muito tempo parado (aba dormindo), pula o buraco. */
@@ -215,8 +252,8 @@ export class MockPlant {
     // Oxigênio: sobe com a fotossíntese, cai à noite e o aerador empurra para cima.
     this.oxygen += dt * (0.035 * daylight - 0.02 + (this.aerator ? 0.05 : 0) - Math.max(0, this.oxygen - 8) * 0.1)
     // Regra do aerador (IOT-07): liga abaixo de 5 mg/L e desliga a partir de 6,5.
-    if (this.oxygen < 5) this.aerator = true
-    else if (this.oxygen >= 6.5) this.aerator = false
+    if (this.oxygen < this.aeratorRule.onBelow) this.aerator = true
+    else if (this.oxygen >= this.aeratorRule.offAt) this.aerator = false
 
     // No passado simulado, um "operador" repõe a água quando ela baixa.
     if (this.backfilling) {
@@ -289,8 +326,8 @@ export class MockPlant {
       if (value > this.bucketMax[i][slot]) this.bucketMax[i][slot] = value
       if (channel.isState) {
         if (value === 1 && this.previous[i] === 0) this.bucketTurnOns[i][slot] += 1
-      } else if (channel.range) {
-        const level = classify(value, channel.range)
+      } else {
+        const level = channel.active ? classify(value, channel.range) : 'ok'
         if (level !== 'ok') this.bucketOut[i][slot] += dt
         this.trackAlert(i, channel, level, value, t)
       }
