@@ -1,4 +1,5 @@
 import {
+  Color,
   DirectionalLight,
   DoubleSide,
   GridHelper,
@@ -88,6 +89,11 @@ export class TwinScene {
   private bubbles!: Bubbles
   private refillJet!: Stream
   private returnJet!: Stream
+  private hemi!: HemisphereLight
+  private sun!: DirectionalLight
+  private tankLamp!: PointLight
+  /** Quanto é dia, de 0 (noite) a 1, pela luminosidade lida; anda suave. */
+  private daylight = 1
 
   private statusTimer = 0
   /** Sem mensagem há mais de 10 s: nada anda, tudo fica cinza. */
@@ -184,15 +190,16 @@ export class TwinScene {
     const p = this.palette
     this.scene.background = p['--scene-sky-day'].clone()
 
-    const hemi = new HemisphereLight(p['--scene-sky-day'], p['--scene-floor'], 1.1)
-    const sun = new DirectionalLight(0xffffff, 1.6)
-    sun.position.set(6, 10, 6)
-    sun.castShadow = true
-    sun.shadow.mapSize.set(1024, 1024)
-    Object.assign(sun.shadow.camera, { left: -7, right: 7, top: 7, bottom: -7 })
-    const lamp = new PointLight(0xffffff, 0.6, 9)
-    lamp.position.set(0, 3.4, 0.4)
-    this.fixed.add(hemi, sun, lamp)
+    this.hemi = new HemisphereLight(p['--scene-sky-day'], p['--scene-floor'], 1.1)
+    this.sun = new DirectionalLight(0xffffff, 1.6)
+    this.sun.position.set(6, 10, 6)
+    this.sun.castShadow = true
+    this.sun.shadow.mapSize.set(1024, 1024)
+    Object.assign(this.sun.shadow.camera, { left: -7, right: 7, top: 7, bottom: -7 })
+    // A luz do aquário: quase nada de dia, acesa à noite.
+    this.tankLamp = new PointLight(0xffffff, 0.6, 9)
+    this.tankLamp.position.set(0, 3.4, 0.4)
+    this.fixed.add(this.hemi, this.sun, this.tankLamp)
 
     const floor = new Mesh(
       new PlaneGeometry(30, 30),
@@ -282,6 +289,7 @@ export class TwinScene {
     if (!this.frozen) {
       this.t += dt
       this.updateWater(dt)
+      this.updateEnvironment(dt)
       this.updateActuators(dt)
       this.shakePump()
       this.pulseCritical()
@@ -358,6 +366,37 @@ export class TwinScene {
         item.labelEl.textContent = text
       }
     }
+  }
+
+  /**
+   * O ambiente reage aos dados (WEB-07): a água turva com a turbidez e a cena
+   * vai do dia à noite pela luminosidade. Tudo anda suave até a leitura.
+   */
+  private updateEnvironment(dt: number): void {
+    const p = this.palette
+    const ease = Math.min(1, dt * 1.5)
+
+    const ntu = this.source.value(TANK.turbidity.device, TANK.turbidity.field)
+    if (ntu !== null) {
+      // Até 10 NTU é água limpa; perto dos 60 do crítico, barrenta.
+      const murk = Math.min(1, Math.max(0, (ntu - 10) / 50))
+      const target = p['--water'].clone().lerp(p['--scene-murky'], murk)
+      const material = this.tank.waterMaterial
+      material.color.lerp(target, ease)
+      material.opacity += (0.45 + 0.4 * murk - material.opacity) * ease
+    }
+
+    const lux = this.source.value(TANK.light.device, TANK.light.field)
+    if (lux !== null) {
+      // A raiz deixa o amanhecer e o entardecer visíveis, não só o meio-dia.
+      const target = Math.min(1, Math.sqrt(Math.max(0, lux) / 30000))
+      this.daylight += (target - this.daylight) * ease
+    }
+    const day = this.daylight
+    ;(this.scene.background as Color).copy(p['--scene-sky-night']).lerp(p['--scene-sky-day'], day)
+    this.hemi.intensity = 0.35 + 0.8 * day
+    this.sun.intensity = 0.15 + 1.5 * day
+    this.tankLamp.intensity = 0.3 + 2.4 * (1 - day)
   }
 
   /**
