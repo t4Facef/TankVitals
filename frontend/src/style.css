@@ -58,6 +58,13 @@
   --fish-2: #f3a65c;
   --metal: #7a8690;
 
+  /* Gêmeo 3D: céu de dia e de noite, chão, água turva e o "sem dados". */
+  --scene-sky-day: #dcebf2;
+  --scene-sky-night: #102a3d;
+  --scene-floor: #e3dccd;
+  --scene-murky: #8a7d4f;
+  --scene-nodata: #9aa5ad;
+
   /* Faixa ideal: na régua dos cartões e no gráfico. */
   --track: #e6e0d3;
   --ideal: #67b78a;
@@ -123,6 +130,12 @@
   --plant-2: #46915f;
   --fish-2: #f0953e;
   --metal: #5f6d77;
+
+  --scene-sky-day: #cfe2eb;
+  --scene-sky-night: #0b2232;
+  --scene-floor: #d6cdb9;
+  --scene-murky: #7a6c3c;
+  --scene-nodata: #8a959d;
 
   --track: #d8d0be;
   --ideal: #4aa574;
