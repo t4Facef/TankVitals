@@ -53,6 +53,8 @@ export const PAGES: PageDef[] = [
     title: 'Gêmeo 3D',
     icon: Box,
     group: 'Operação',
+    // O Three.js é pesado: só carrega quando a rota abre.
+    component: () => import('../views/TwinView.vue'),
     task: 'WEB-05 a WEB-08',
     description: 'O tanque em 3D, movido só pelos dados que chegam ao vivo pelo WebSocket.',
   },

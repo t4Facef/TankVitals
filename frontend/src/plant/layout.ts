@@ -33,6 +33,8 @@ export interface Placement {
   position: Vec3
   /** Giro em torno do eixo vertical, em graus. */
   rotationY?: number
+  /** Sobe o rótulo, para não encavalar com o do vizinho. */
+  labelLift?: number
 }
 
 const RIM = TANK_3D.height
@@ -40,9 +42,9 @@ const BACK = -TANK_3D.depth / 2 + 0.15
 
 export const SCENE_LAYOUT: Record<string, Placement> = {
   'temp-agua-01': { model: 'probe', position: [-1.05, RIM, BACK] },
-  'ph-01': { model: 'probe', position: [-0.5, RIM, BACK] },
-  'nivel-01': { model: 'level-sensor', position: [0.05, RIM, BACK] },
-  'turbidez-01': { model: 'probe', position: [0.55, RIM, BACK] },
+  'ph-01': { model: 'probe', position: [-0.5, RIM, BACK], labelLift: 0.36 },
+  'nivel-01': { model: 'level-sensor', position: [0.05, RIM, BACK], labelLift: 0.72 },
+  'turbidez-01': { model: 'probe', position: [0.55, RIM, BACK], labelLift: 0.36 },
   'od-01': { model: 'probe', position: [1.05, RIM, BACK] },
   'luz-01': { model: 'light-sensor', position: [-2.5, 0, -1.55] },
   'bomba-rec-01': { model: 'pump', position: [3.3, 0, 0.35] },
