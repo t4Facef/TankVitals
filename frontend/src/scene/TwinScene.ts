@@ -18,6 +18,7 @@ import {
 } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js'
+import { ITEM_LEVEL_TEXT, type ItemLevel } from '../composables/useItemLevel'
 import type { Device } from '../domain/devices'
 import { AUTO_SLOTS, FIXTURES, PIPES, SCENE_LAYOUT, TANK, TANK_3D, type Placement, type Vec3 } from '../plant/layout'
 import { buildFilter, buildItem, buildTank, type ItemModel, type TankModel } from './models'
@@ -36,6 +37,10 @@ export interface TwinSource {
   /** Leitura recente, ou `null` quando não há (ou ficou velha). */
   value(device: string, field: string): number | null
   state(device: string, field: string): boolean | null
+  /** Estado do item: a faixa e a IA, ou "sem dados" (WEB-06). */
+  level(device: Device): ItemLevel
+  /** Nada chegou nos últimos 10 s: a cena congela e avisa. */
+  frozen(): boolean
 }
 
 interface SceneItem {
@@ -43,10 +48,11 @@ interface SceneItem {
   model: ItemModel
   labelEl: HTMLElement
   labelText: string
+  level: ItemLevel | null
 }
 
-/** Os rótulos são texto do DOM: mudam 4 vezes por segundo, e só se o texto mudou. */
-const LABEL_EVERY_S = 0.25
+/** Estado e rótulos mudam 4 vezes por segundo (e só se mudaram); o resto anda a cada quadro. */
+const STATUS_EVERY_S = 0.25
 
 export class TwinScene {
   private readonly container: HTMLElement
@@ -68,7 +74,11 @@ export class TwinScene {
   private items = new Map<string, SceneItem>()
   private nozzles = new Map<string, Object3D>()
 
-  private labelTimer = 0
+  private statusTimer = 0
+  /** Sem mensagem há mais de 10 s: nada anda, tudo fica cinza. */
+  private frozen = true
+  /** Relógio das animações: para quando a cena congela. */
+  private t = 0
   /** Nível da água desenhado agora, em %; anda suave até a leitura. */
   private shownLevel: number | null = null
 
@@ -131,12 +141,12 @@ export class TwinScene {
 
       const labelEl = makeLabel()
       model.labelAnchor.add(new CSS2DObject(labelEl))
-      this.items.set(device.id, { device, model, labelEl, labelText: '' })
+      this.items.set(device.id, { device, model, labelEl, labelText: '', level: null })
     }
 
     this.scene.updateMatrixWorld(true)
     this.buildPipes()
-    this.labelTimer = 0
+    this.statusTimer = 0
   }
 
   dispose(): void {
@@ -235,12 +245,18 @@ export class TwinScene {
     this.timer.update(time)
     const dt = Math.min(this.timer.getDelta(), 0.1)
 
-    this.labelTimer -= dt
-    if (this.labelTimer <= 0) {
-      this.labelTimer = LABEL_EVERY_S
-      this.refreshLabels()
+    this.statusTimer -= dt
+    if (this.statusTimer <= 0) {
+      this.statusTimer = STATUS_EVERY_S
+      this.refreshStatus()
     }
-    this.updateWater(dt)
+
+    // Congelada, a cena não anda: nem água, nem peças. Só a câmera continua livre.
+    if (!this.frozen) {
+      this.t += dt
+      this.updateWater(dt)
+      this.pulseCritical()
+    }
 
     this.controls.update()
     this.renderer.render(this.scene, this.camera)
@@ -277,14 +293,48 @@ export class TwinScene {
     }
   }
 
-  private refreshLabels(): void {
+  /** Cor de cada item e o texto dos rótulos. */
+  private refreshStatus(): void {
+    this.frozen = this.source.frozen()
     for (const item of this.items.values()) {
-      const text = labelText(item.device, this.source)
+      const level = this.frozen ? 'vazio' : this.source.level(item.device)
+      if (level !== item.level) {
+        item.level = level
+        const color = this.levelColor(level)
+        for (const material of item.model.status) {
+          material.color.copy(color)
+          material.emissive.copy(color).multiplyScalar(level === 'vazio' ? 0 : 0.22)
+          material.emissiveIntensity = 1
+        }
+        item.labelEl.className = `twin-label level-${level}`
+      }
+
+      // O estado vai escrito no rótulo, não só na cor.
+      const text =
+        level === 'vazio'
+          ? `${shortName(item.device)} · ${ITEM_LEVEL_TEXT.vazio}`
+          : level === 'ok'
+            ? labelText(item.device, this.source)
+            : `${labelText(item.device, this.source)} · ${ITEM_LEVEL_TEXT[level]}`
       if (text !== item.labelText) {
         item.labelText = text
         item.labelEl.textContent = text
       }
     }
+  }
+
+  /** O crítico pulsa: chama o olho mesmo de longe, no projetor. */
+  private pulseCritical(): void {
+    const glow = 1 + 0.9 * Math.sin(this.t * 6)
+    for (const item of this.items.values()) {
+      if (item.level !== 'critico') continue
+      for (const material of item.model.status) material.emissiveIntensity = glow
+    }
+  }
+
+  private levelColor(level: ItemLevel) {
+    const p = this.palette
+    return { ok: p['--nivel-ok'], atencao: p['--nivel-atencao'], critico: p['--nivel-critico'], vazio: p['--scene-nodata'] }[level]
   }
 
   private fit(): void {
@@ -314,6 +364,11 @@ function makeLabel(): HTMLElement {
   // A lista de itens ao lado da cena é o caminho acessível; o rótulo é visual.
   el.setAttribute('aria-hidden', 'true')
   return el
+}
+
+/** Nome no rótulo: a grandeza nos sensores, o nome do item no resto. */
+function shortName(device: Device): string {
+  return device.kind === 'sensor' && device.fields[0] ? device.fields[0].short : device.name
 }
 
 /** "pH 7,21", "Aerador · ligado", "Bomba de recirculação · 1,21 mm/s". */
