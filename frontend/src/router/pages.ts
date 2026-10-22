@@ -133,6 +133,7 @@ export const PAGES: PageDef[] = [
     title: 'Ferramentas',
     icon: Wrench,
     group: 'Sistema',
+    component: () => import('../views/ToolsView.vue'),
     task: 'WEB-04',
     description: 'Links das interfaces do InfluxDB, do RabbitMQ, do pgAdmin e da documentação da API.',
   },
