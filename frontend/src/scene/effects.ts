@@ -1,5 +1,6 @@
 import {
   type Color,
+  ConeGeometry,
   CylinderGeometry,
   type CurvePath,
   InstancedMesh,
@@ -10,6 +11,7 @@ import {
   SphereGeometry,
   Vector3,
 } from 'three'
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 
 /**
  * Efeitos animados da cena (WEB-07). Toda repetição é um `InstancedMesh`: um
@@ -183,5 +185,94 @@ export class Stream {
       this.drops.setMatrixAt(i, m)
     })
     this.drops.instanceMatrix.needsUpdate = true
+  }
+}
+
+interface Fish {
+  cx: number
+  cz: number
+  rx: number
+  rz: number
+  angle: number
+  speed: number
+  turn: 1 | -1
+  depth: number
+  size: number
+  y: number
+}
+
+const Y_AXIS = new Vector3(0, 1, 0)
+
+/**
+ * O cardume: um InstancedMesh só desenhando todos os peixes. Nadam em elipses
+ * pelo tanque, mais devagar com o oxigênio baixo; com ele muito baixo, sobem
+ * para perto da superfície, como peixe de verdade faz quando falta ar.
+ */
+export class School {
+  readonly mesh: InstancedMesh
+  private readonly fish: Fish[]
+  private pace = 1
+  private gasping = false
+
+  constructor(colors: [Color, Color], count = 14) {
+    const body = new SphereGeometry(1, 10, 8)
+    body.scale(0.17, 0.08, 0.05)
+    const tail = new ConeGeometry(0.065, 0.12, 4)
+    tail.rotateZ(Math.PI / 2)
+    tail.translate(-0.2, 0, 0)
+    this.mesh = new InstancedMesh(
+      mergeGeometries([body, tail]),
+      new MeshStandardMaterial({ roughness: 0.5, flatShading: true }),
+      count,
+    )
+    this.mesh.castShadow = true
+    this.mesh.frustumCulled = false
+    this.fish = Array.from({ length: count }, (_, i) => ({
+      cx: -1 + Math.random() * 2,
+      cz: -0.15 + Math.random() * 0.4,
+      rx: 0.35 + Math.random() * 0.4,
+      rz: 0.2 + Math.random() * 0.25,
+      angle: Math.random() * Math.PI * 2,
+      speed: 0.35 + Math.random() * 0.35,
+      turn: i % 3 === 0 ? -1 : 1,
+      depth: 0.15 + Math.random() * 0.6,
+      size: 0.7 + Math.random() * 0.6,
+      y: 0.5,
+    }))
+    this.fish.forEach((_, i) => this.mesh.setColorAt(i, colors[i % 2]))
+  }
+
+  /**
+   * `oxygen` em mg/L (`null` mantém o ritmo de antes); `bottom` e `top` são a
+   * areia e a superfície da água.
+   */
+  update(dt: number, time: number, oxygen: number | null, bottom: number, top: number): void {
+    if (oxygen !== null) {
+      // 6 mg/L ou mais: ritmo normal; 3 ou menos: quase parados.
+      const target = Math.min(1, Math.max(0.15, (oxygen - 2.4) / 3.6))
+      this.pace += (target - this.pace) * Math.min(1, dt)
+      this.gasping = oxygen < 4
+    }
+    const depthOfWater = top - bottom
+    const shallow = depthOfWater < 0.3
+
+    this.fish.forEach((fish, i) => {
+      fish.angle += dt * fish.speed * fish.turn * this.pace
+      const x = fish.cx + fish.rx * Math.cos(fish.angle)
+      const z = fish.cz + fish.rz * Math.sin(fish.angle)
+      const vx = -fish.rx * Math.sin(fish.angle) * fish.turn
+      const vz = fish.rz * Math.cos(fish.angle) * fish.turn
+
+      const depth = shallow ? 0.2 : this.gasping ? 0.85 + 0.08 * Math.sin(i) : fish.depth
+      const targetY = bottom + 0.06 + Math.max(0, depthOfWater - 0.12) * depth
+      fish.y += (targetY - fish.y) * Math.min(1, dt * 0.8)
+
+      const wiggle = Math.sin(time * 9 * this.pace + i) * 0.14 * this.pace
+      q.setFromAxisAngle(Y_AXIS, Math.atan2(-vz, vx) + wiggle)
+      p.set(x, fish.y + Math.sin(time * 1.3 + i) * 0.03, z)
+      m.compose(p, q, s.setScalar(fish.size))
+      this.mesh.setMatrixAt(i, m)
+    })
+    this.mesh.instanceMatrix.needsUpdate = true
   }
 }

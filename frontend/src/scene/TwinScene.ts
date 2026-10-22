@@ -32,7 +32,7 @@ import {
   type Placement,
   type Vec3,
 } from '../plant/layout'
-import { Bubbles, PipeFlow, Stream } from './effects'
+import { Bubbles, PipeFlow, School, Stream } from './effects'
 import { buildFilter, buildItem, buildTank, type ItemModel, type TankModel } from './models'
 import { roundedPath, routePoints } from './pipes'
 import { readPalette, type Palette } from './tokens'
@@ -89,6 +89,7 @@ export class TwinScene {
   private bubbles!: Bubbles
   private refillJet!: Stream
   private returnJet!: Stream
+  private school!: School
   private hemi!: HemisphereLight
   private sun!: DirectionalLight
   private tankLamp!: PointLight
@@ -226,6 +227,10 @@ export class TwinScene {
     this.returnJet = new Stream(p['--water-line'])
     this.fixed.add(this.bubbles.mesh, this.refillJet.column, this.refillJet.drops, this.returnJet.column, this.returnJet.drops)
 
+    this.school = new School([p['--brand-fish'], p['--fish-2']])
+    this.school.mesh.visible = false
+    this.fixed.add(this.school.mesh)
+
     const filterLabel = makeLabel()
     filterLabel.classList.add('is-fixture')
     filterLabel.textContent = 'Filtro'
@@ -291,6 +296,7 @@ export class TwinScene {
       this.updateWater(dt)
       this.updateEnvironment(dt)
       this.updateActuators(dt)
+      this.updateFish(dt)
       this.shakePump()
       this.pulseCritical()
     }
@@ -422,6 +428,15 @@ export class TwinScene {
         fan.rotation[axis] += dt * 18
       }
     }
+  }
+
+  /** Peixes só existem com água desenhada; o ritmo vem do oxigênio dissolvido. */
+  private updateFish(dt: number): void {
+    const { surface } = this.tank
+    this.school.mesh.visible = surface.visible
+    if (!surface.visible) return
+    const oxygen = this.source.value(TANK.oxygen.device, TANK.oxygen.field)
+    this.school.update(dt, this.t, oxygen, TANK_3D.sand, surface.position.y)
   }
 
   /**
