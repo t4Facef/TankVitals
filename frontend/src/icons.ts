@@ -18,8 +18,11 @@ import {
   Zap,
   Gauge,
   ThermometerSun,
+  Cog,
+  Power,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
+import type { DeviceKind } from './domain/devices'
 import type { AlertLevel } from './types'
 
 /**
@@ -66,4 +69,11 @@ export const UI_ICON = {
   dispositivo: RadioTower,
   analise: ChartNoAxesColumn,
   atualizando: RefreshCw,
+}
+
+/** Ícone do tipo de dispositivo, para a lista do cadastro e o painel do 3D. */
+export const KIND_ICON: Record<DeviceKind, Component> = {
+  sensor: RadioTower,
+  equipment: Cog,
+  actuator: Power,
 }

@@ -177,6 +177,16 @@ p {
   min-height: 100vh;
 }
 
+/* Texto só para leitor de tela: cabeçalho de coluna de ações, por exemplo. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* ---------------------------------------------------------------------------
    Barra de status (topo do dashboard)
    --------------------------------------------------------------------------- */

@@ -62,6 +62,7 @@ export const PAGES: PageDef[] = [
     title: 'Dispositivos',
     icon: Cpu,
     group: 'Operação',
+    component: () => import('../views/DevicesView.vue'),
     task: 'WEB-03',
     description:
       'Cadastro e gerenciamento dos sensores, dos atuadores e da bomba, com as faixas normais e as regras.',
