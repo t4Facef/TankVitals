@@ -315,7 +315,7 @@ function buildPump(palette: Palette): ItemModel {
   addNozzle(root, nozzles, 'inlet', [-0.45, 0.3, 0], [-1, 0, 0], 0.06, 0.34, metal)
   addNozzle(root, nozzles, 'outlet', [0, 0.8, 0], [0, 1, 0], 0.06, 0.26, metal)
 
-  return { root, status: [status], lamp: null, nozzles, labelAnchor: anchor(root, [0.3, 1.05, 0]), parts: { body, fan } }
+  return { root, status: [status], lamp: null, nozzles, labelAnchor: anchor(root, [-0.2, 1.05, 0]), parts: { body, fan } }
 }
 
 /** Aerador: o compressor de ar no chão, com a ventoinha de frente e a lâmpada. */

@@ -1,5 +1,13 @@
 import { classify } from '../alerts'
-import { variableId, type Alert, type CommandRequest, type HistoryResponse, type Series } from '../domain/devices'
+import {
+  FAULT_MODES,
+  variableId,
+  type Alert,
+  type CommandRequest,
+  type FaultMode,
+  type HistoryResponse,
+  type Series,
+} from '../domain/devices'
 import type { HistoryPoint, HistoryRange, MetricThreshold } from '../types'
 import { mockRegistry, SEED_DEVICES } from './registry'
 
@@ -97,9 +105,6 @@ const MAX_ALERTS = 300
 /** Passo da simulação do passado distante, em segundos. */
 const COARSE_STEP_S = 10
 
-export const FAULT_MODES = ['rolamento', 'entupimento', 'superaquecimento', 'desbalanceamento'] as const
-export type FaultMode = (typeof FAULT_MODES)[number]
-
 interface OpenAlertState {
   alert: Alert
   okStreak: number
@@ -183,12 +188,17 @@ export class MockPlant {
     return payload
   }
 
-  /** Saúde e vida útil "previstas", até a IA de verdade (IA-07) existir. */
+  /**
+   * Saúde e vida útil "previstas", até a IA de verdade (IA-07) existir. Imita
+   * um modelo: não sabe da falha na hora em que ela entra, só percebe a
+   * degradação aos poucos, e a vida útil tem o teto de 168 h da IA-05. Com a
+   * falha injetada, a bomba passa a atenção em uns 2,5 min e a crítico em uns 3.
+   */
   insight(): { health: number; rul_h: number; model_version: string } {
     const progress = this.fault?.progress ?? 0
     return {
       health: round(Math.max(2, 95 - 90 * progress ** 1.4 + noise(1)), 1),
-      rul_h: this.fault ? round((1 - progress) * 6, 1) : 720,
+      rul_h: round(Math.min(168, Math.max(0.5, 168 * (1 - progress) ** 3 + noise(2))), 1),
       model_version: 'mock',
     }
   }

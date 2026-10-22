@@ -1,4 +1,6 @@
 import {
+  Box3,
+  Box3Helper,
   Color,
   DirectionalLight,
   DoubleSide,
@@ -12,9 +14,12 @@ import {
   PerspectiveCamera,
   PlaneGeometry,
   PointLight,
+  Raycaster,
   Scene,
   Timer,
   TubeGeometry,
+  Vector2,
+  Vector3,
   WebGLRenderer,
 } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
@@ -55,6 +60,12 @@ export interface TwinSource {
   frozen(): boolean
 }
 
+/** O que a cena avisa à tela. */
+export interface TwinHandlers {
+  /** Clicou num item (ou no rótulo dele); `null` é clique no vazio. */
+  onSelect(deviceId: string | null): void
+}
+
 interface SceneItem {
   device: Device
   model: ItemModel
@@ -69,6 +80,7 @@ const STATUS_EVERY_S = 0.25
 export class TwinScene {
   private readonly container: HTMLElement
   private readonly source: TwinSource
+  private readonly handlers: TwinHandlers
   private readonly renderer: WebGLRenderer
   private readonly labels: CSS2DRenderer
   private readonly camera: PerspectiveCamera
@@ -85,6 +97,7 @@ export class TwinScene {
   private tank!: TankModel
   private items = new Map<string, SceneItem>()
   private nozzles = new Map<string, Object3D>()
+  private devices: Device[] = []
   private flows: Array<{ spec: PipeSpec; flow: PipeFlow }> = []
   private bubbles!: Bubbles
   private refillJet!: Stream
@@ -103,12 +116,21 @@ export class TwinScene {
   private t = 0
   /** Nível da água desenhado agora, em %; anda suave até a leitura. */
   private shownLevel: number | null = null
+  // Clique e destaque (WEB-08).
+  private readonly raycaster = new Raycaster()
+  private readonly pointer = new Vector2()
+  private pressedAt: { x: number; y: number } | null = null
+  private hover: PointerEvent | null = null
+  private selectedId: string | null = null
+  private selection: Box3Helper | null = null
+
   /** Quem pediu menos movimento no sistema não vê a bomba tremer; a cor e o painel continuam. */
   private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-  constructor(container: HTMLElement, source: TwinSource) {
+  constructor(container: HTMLElement, source: TwinSource, handlers: TwinHandlers) {
     this.container = container
     this.source = source
+    this.handlers = handlers
     this.palette = readPalette()
 
     this.renderer = new WebGLRenderer({ antialias: true })
@@ -124,9 +146,8 @@ export class TwinScene {
     container.append(this.labels.domElement)
 
     this.camera = new PerspectiveCamera(38, 1, 0.1, 100)
-    this.camera.position.set(5.3, 3.9, 6.9)
     this.controls = new OrbitControls(this.camera, this.renderer.domElement)
-    this.controls.target.set(0.15, 0.95, 0)
+    this.controls.target.set(0.55, 0.9, 0)
     this.controls.enableDamping = true
     this.controls.minDistance = 4
     this.controls.maxDistance = 18
@@ -134,6 +155,11 @@ export class TwinScene {
 
     this.scene.add(this.fixed, this.dynamic)
     this.buildFixed()
+
+    const canvas = this.renderer.domElement
+    canvas.addEventListener('pointerdown', this.onPointerDown)
+    canvas.addEventListener('pointerup', this.onPointerUp)
+    canvas.addEventListener('pointermove', this.onPointerMove)
 
     this.resize = new ResizeObserver(() => this.fit())
     this.resize.observe(container)
@@ -144,6 +170,7 @@ export class TwinScene {
 
   /** Monta os itens do cadastro. Chamado quando o cadastro muda, nunca por mensagem. */
   setDevices(devices: Device[]): void {
+    this.devices = devices
     this.clear(this.dynamic)
     this.items.clear()
     this.flows = []
@@ -165,6 +192,8 @@ export class TwinScene {
       for (const [name, nozzle] of Object.entries(model.nozzles)) this.nozzles.set(`${device.id}.${name}`, nozzle)
 
       const labelEl = makeLabel()
+      labelEl.classList.add('is-item')
+      labelEl.addEventListener('click', () => this.handlers.onSelect(device.id))
       model.labelAnchor.add(new CSS2DObject(labelEl))
       this.items.set(device.id, { device, model, labelEl, labelText: '', level: null })
     }
@@ -172,10 +201,45 @@ export class TwinScene {
     this.scene.updateMatrixWorld(true)
     this.buildPipes()
     this.statusTimer = 0
+    this.select(this.selectedId)
+  }
+
+  /** Destaca um item: caixa em volta na cena e o rótulo marcado. */
+  select(deviceId: string | null): void {
+    this.selectedId = deviceId
+    if (this.selection) {
+      this.scene.remove(this.selection)
+      this.selection.dispose()
+      this.selection = null
+    }
+    for (const item of this.items.values()) item.labelEl.classList.toggle('is-selected', item.device.id === deviceId)
+    const item = deviceId ? this.items.get(deviceId) : undefined
+    if (!item) return
+    const box = new Box3().setFromObject(item.model.root).expandByScalar(0.06)
+    this.selection = new Box3Helper(box, this.palette['--accent'])
+    this.scene.add(this.selection)
+  }
+
+  /**
+   * Troca de contraste: as cores da cena vêm dos tokens do CSS, então ela se
+   * remonta com a paleta nova. Acontece quando a pessoa muda no menu, nunca
+   * por mensagem.
+   */
+  refreshPalette(): void {
+    this.palette = readPalette()
+    this.clear(this.fixed)
+    this.nozzles.clear()
+    this.buildFixed()
+    this.setDevices(this.devices)
   }
 
   dispose(): void {
     this.renderer.setAnimationLoop(null)
+    const canvas = this.renderer.domElement
+    canvas.removeEventListener('pointerdown', this.onPointerDown)
+    canvas.removeEventListener('pointerup', this.onPointerUp)
+    canvas.removeEventListener('pointermove', this.onPointerMove)
+    this.selection?.dispose()
     this.resize.disconnect()
     this.controls.dispose()
     this.clear(this.dynamic)
@@ -284,6 +348,12 @@ export class TwinScene {
     this.timer.update(time)
     const dt = Math.min(this.timer.getDelta(), 0.1)
 
+    if (this.hover) {
+      // Um raio por quadro no máximo, não um por evento do mouse.
+      this.renderer.domElement.style.cursor = this.pick(this.hover) ? 'pointer' : ''
+      this.hover = null
+    }
+
     this.statusTimer -= dt
     if (this.statusTimer <= 0) {
       this.statusTimer = STATUS_EVERY_S
@@ -349,7 +419,8 @@ export class TwinScene {
           material.emissive.copy(color).multiplyScalar(level === 'vazio' ? 0 : 0.22)
           material.emissiveIntensity = 1
         }
-        item.labelEl.className = `twin-label level-${level}`
+        item.labelEl.className = `twin-label is-item level-${level}`
+        item.labelEl.classList.toggle('is-selected', item.device.id === this.selectedId)
       }
 
       // Lâmpada do atuador: acesa quando ligado.
@@ -480,6 +551,36 @@ export class TwinScene {
     return { ok: p['--nivel-ok'], atencao: p['--nivel-atencao'], critico: p['--nivel-critico'], vazio: p['--scene-nodata'] }[level]
   }
 
+  // --- clique --------------------------------------------------------------------------
+
+  private readonly onPointerDown = (event: PointerEvent): void => {
+    this.pressedAt = { x: event.clientX, y: event.clientY }
+  }
+
+  /** Clique de verdade, não o fim de um arrasto da câmera. */
+  private readonly onPointerUp = (event: PointerEvent): void => {
+    if (!this.pressedAt) return
+    const moved = Math.hypot(event.clientX - this.pressedAt.x, event.clientY - this.pressedAt.y)
+    this.pressedAt = null
+    if (moved <= 6) this.handlers.onSelect(this.pick(event))
+  }
+
+  private readonly onPointerMove = (event: PointerEvent): void => {
+    this.hover = event
+  }
+
+  /** O item do cadastro sob o ponteiro. Tubos e vidro não seguram o clique. */
+  private pick(event: PointerEvent): string | null {
+    const rect = this.renderer.domElement.getBoundingClientRect()
+    this.pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1)
+    this.raycaster.setFromCamera(this.pointer, this.camera)
+    for (const hit of this.raycaster.intersectObjects(this.dynamic.children, true)) {
+      const id = hit.object.userData.deviceId
+      if (typeof id === 'string') return id
+    }
+    return null
+  }
+
   private fit(): void {
     const width = Math.max(1, this.container.clientWidth)
     const height = Math.max(1, this.container.clientHeight)
@@ -487,6 +588,23 @@ export class TwinScene {
     this.labels.setSize(width, height)
     this.camera.aspect = width / height
     this.camera.updateProjectionMatrix()
+    if (!this.framed) this.frameCamera()
+  }
+
+  private framed = false
+
+  /**
+   * Primeiro enquadramento: a planta inteira (do reservatório à bomba) cabe na
+   * largura. Canvas mais estreito, câmera mais longe. Depois disso, quem manda
+   * na câmera é a pessoa.
+   */
+  private frameCamera(): void {
+    if (this.container.clientWidth < 2) return
+    this.framed = true
+    const distance = 8.4 * Math.max(1, 1.35 / this.camera.aspect)
+    const direction = new Vector3(5.3, 2.95, 6.9).normalize()
+    this.camera.position.copy(this.controls.target).addScaledVector(direction, distance)
+    this.controls.update()
   }
 
   /** Tira tudo de um grupo e devolve a memória de vídeo. */
@@ -495,6 +613,8 @@ export class TwinScene {
       const mesh = object as Mesh
       mesh.geometry?.dispose()
       for (const material of [mesh.material ?? []].flat()) material.dispose()
+      // A luz do sol guarda o mapa de sombra na placa de vídeo.
+      if (object instanceof DirectionalLight) object.dispose()
       if (object instanceof CSS2DObject) object.element.remove()
     })
     group.clear()
