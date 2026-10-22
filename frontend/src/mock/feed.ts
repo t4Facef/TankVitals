@@ -16,6 +16,17 @@ import { mockRegistry } from './registry'
  * cadastrado pela tela não tem simulação e fica "sem dados", como ficaria um
  * sensor de verdade que ainda não foi ligado.
  */
+let paused = false
+
+/**
+ * Para o "simulador" do modo simulado: as mensagens deixam de chegar, como
+ * quando o processo de verdade cai. Serve para ver o dashboard e o 3D
+ * avisarem "sem dados" e voltarem sozinhos (WEB-06).
+ */
+export function setMockFeedPaused(value: boolean): void {
+  paused = value
+}
+
 export function startMockFeed(
   onEnvelope: (msg: Envelope) => void,
   onStatus: (status: LiveStatus) => void,
@@ -34,6 +45,7 @@ export function startMockFeed(
 
   const step = () => {
     plant.catchUp()
+    if (paused) return
     for (const device of mockRegistry.devices) {
       if (!device.active) continue
       const payload = plant.payloadOf(device.id)
