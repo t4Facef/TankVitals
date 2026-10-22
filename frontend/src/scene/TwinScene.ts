@@ -20,7 +20,18 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js'
 import { ITEM_LEVEL_TEXT, type ItemLevel } from '../composables/useItemLevel'
 import type { Device } from '../domain/devices'
-import { AUTO_SLOTS, FIXTURES, PIPES, SCENE_LAYOUT, TANK, TANK_3D, type Placement, type Vec3 } from '../plant/layout'
+import {
+  AUTO_SLOTS,
+  FIXTURES,
+  PIPES,
+  SCENE_LAYOUT,
+  TANK,
+  TANK_3D,
+  type PipeSpec,
+  type Placement,
+  type Vec3,
+} from '../plant/layout'
+import { Bubbles, PipeFlow, Stream } from './effects'
 import { buildFilter, buildItem, buildTank, type ItemModel, type TankModel } from './models'
 import { roundedPath, routePoints } from './pipes'
 import { readPalette, type Palette } from './tokens'
@@ -73,6 +84,10 @@ export class TwinScene {
   private tank!: TankModel
   private items = new Map<string, SceneItem>()
   private nozzles = new Map<string, Object3D>()
+  private flows: Array<{ spec: PipeSpec; flow: PipeFlow }> = []
+  private bubbles!: Bubbles
+  private refillJet!: Stream
+  private returnJet!: Stream
 
   private statusTimer = 0
   /** Sem mensagem há mais de 10 s: nada anda, tudo fica cinza. */
@@ -122,6 +137,7 @@ export class TwinScene {
   setDevices(devices: Device[]): void {
     this.clear(this.dynamic)
     this.items.clear()
+    this.flows = []
     for (const key of [...this.nozzles.keys()]) {
       if (!key.startsWith('tank.') && !key.startsWith('filter.')) this.nozzles.delete(key)
     }
@@ -195,6 +211,12 @@ export class TwinScene {
     filter.root.position.set(...FIXTURES.filter.position)
     this.fixed.add(filter.root)
     for (const [name, nozzle] of Object.entries(filter.nozzles)) this.nozzles.set(`filter.${name}`, nozzle)
+    // Bolhas e jatos: ficam na cena; aparecem quando o atuador liga.
+    this.bubbles = new Bubbles(p['--surface'])
+    this.refillJet = new Stream(p['--water-line'])
+    this.returnJet = new Stream(p['--water-line'])
+    this.fixed.add(this.bubbles.mesh, this.refillJet.column, this.refillJet.drops, this.returnJet.column, this.returnJet.drops)
+
     const filterLabel = makeLabel()
     filterLabel.classList.add('is-fixture')
     filterLabel.textContent = 'Filtro'
@@ -235,7 +257,10 @@ export class TwinScene {
       )
       tube.renderOrder = 3
       tube.userData.pipe = spec.id
-      this.dynamic.add(tube)
+      // O que corre dentro: água azul, ar branco.
+      const flow = new PipeFlow(path, spec.radius, spec.medium === 'air' ? this.palette['--surface'] : this.palette['--accent'])
+      this.dynamic.add(tube, flow.mesh)
+      this.flows.push({ spec, flow })
     }
   }
 
@@ -255,6 +280,7 @@ export class TwinScene {
     if (!this.frozen) {
       this.t += dt
       this.updateWater(dt)
+      this.updateActuators(dt)
       this.pulseCritical()
     }
 
@@ -309,6 +335,14 @@ export class TwinScene {
         item.labelEl.className = `twin-label level-${level}`
       }
 
+      // Lâmpada do atuador: acesa quando ligado.
+      const lamp = item.model.lamp
+      if (lamp && item.device.state_field) {
+        const on = !this.frozen && this.source.state(item.device.id, item.device.state_field) === true
+        lamp.emissive.copy(on ? this.palette['--accent'] : this.palette['--night']).multiplyScalar(on ? 1.6 : 0)
+        lamp.color.copy(on ? this.palette['--surface'] : this.palette['--metal'])
+      }
+
       // O estado vai escrito no rótulo, não só na cor.
       const text =
         level === 'vazio'
@@ -321,6 +355,40 @@ export class TwinScene {
         item.labelEl.textContent = text
       }
     }
+  }
+
+  /**
+   * Atuadores animados quando ligados (WEB-07): partículas nos tubos pela
+   * vazão, bolhas do aerador, jatos da reposição e do retorno e as ventoinhas.
+   */
+  private updateActuators(dt: number): void {
+    const src = this.source
+    const surfaceY = this.tank.surface.visible ? this.tank.surface.position.y : TANK_3D.sand
+
+    for (const { spec, flow } of this.flows) flow.update(dt, this.rate(spec.flow))
+
+    const aerator = src.state(TANK.aerator.device, TANK.aerator.field) === true
+    this.bubbles.update(dt, this.t, aerator, this.tank.emitters.airstone, surfaceY)
+    this.refillJet.update(dt, src.state(TANK.refill.device, TANK.refill.field) ? 1 : 0, this.tank.emitters.refill, surfaceY)
+    this.returnJet.update(dt, this.rate(TANK.flow), this.tank.emitters.return, surfaceY)
+
+    for (const item of this.items.values()) {
+      const fan = item.model.parts.fan
+      const field = item.device.state_field
+      if (fan && field && src.state(item.device.id, field)) {
+        const axis = fan.userData.axis === 'z' ? 'z' : 'x'
+        fan.rotation[axis] += dt * 18
+      }
+    }
+  }
+
+  /** Quanto corre num tubo: a vazão sobre a cheia, ou 1 e 0 pelo estado do atuador. */
+  private rate(flow: { device: string; field: string; full?: number }): number {
+    if (flow.full) {
+      const value = this.source.value(flow.device, flow.field)
+      return value === null ? 0 : Math.min(1.2, Math.max(0, value / flow.full))
+    }
+    return this.source.state(flow.device, flow.field) ? 1 : 0
   }
 
   /** O crítico pulsa: chama o olho mesmo de longe, no projetor. */

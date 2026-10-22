@@ -11,6 +11,12 @@ export const TANK = {
   aerator: { device: 'aerador-01', field: 'on' },
   recirculation: { device: 'bomba-rec-01', field: 'running' },
   refill: { device: 'bomba-repo-01', field: 'on' },
+  // As grandezas que mexem no ambiente do 3D (WEB-07).
+  flow: { device: 'bomba-rec-01', field: 'flow_l_min', full: 50 },
+  vibration: { device: 'bomba-rec-01', field: 'vibration_mm_s' },
+  turbidity: { device: 'turbidez-01', field: 'turbidity_ntu' },
+  light: { device: 'luz-01', field: 'light_lux' },
+  oxygen: { device: 'od-01', field: 'oxygen_mg_l' },
 } as const
 
 // --- Cena 3D (WEB-05) ---------------------------------------------------------
