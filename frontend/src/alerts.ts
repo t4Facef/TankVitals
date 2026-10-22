@@ -42,3 +42,14 @@ export function worstLevel(levels: Iterable<AlertLevel>): AlertLevel {
   for (const level of levels) if (LEVEL_WEIGHT[level] > LEVEL_WEIGHT[worst]) worst = level
   return worst
 }
+
+/**
+ * Semáforo da saúde prevista pela IA (IA-07, IA-09): vermelho com saúde abaixo
+ * de 40 ou vida útil abaixo de 24 h (os limites do alerta da IA-08), amarelo
+ * abaixo de 70. É o "alerta da IA" que entra na cor do 3D.
+ */
+export function healthLevel(health: number, rulHours: number | null): AlertLevel {
+  if (health < 40 || (rulHours !== null && rulHours < 24)) return 'critico'
+  if (health < 70) return 'atencao'
+  return 'ok'
+}
