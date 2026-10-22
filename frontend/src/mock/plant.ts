@@ -260,7 +260,9 @@ export class MockPlant {
       if (!this.refill && this.level < 62) this.refill = true
       else if (this.refill && this.level >= 76) this.refill = false
     }
-    this.level = clamp(this.level + dt * (this.refill ? 0.06 : -0.0012), 0, 100)
+    // A reposição enche 15 % por hora simulada (um quarto de ponto por segundo
+    // real): ligar e ver a água subir no dashboard e no 3D em poucos segundos.
+    this.level = clamp(this.level + dt * (this.refill ? 0.25 : -0.0012), 0, 100)
 
     // Sem recirculação a água não passa pelo filtro e turva aos poucos.
     this.dirt = this.recirculation ? Math.max(0, this.dirt - 0.02 * dt) : this.dirt + 0.01 * dt

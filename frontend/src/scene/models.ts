@@ -304,6 +304,7 @@ function buildPump(palette: Palette): ItemModel {
   // Ventoinha do motor: gira com a bomba ligada.
   const fan = new Group()
   fan.position.set(0.735, 0.3, 0)
+  fan.userData.axis = 'x'
   for (let i = 0; i < 3; i += 1) {
     const blade = new Mesh(new BoxGeometry(0.012, 0.32, 0.06), metal)
     blade.rotation.x = (i * Math.PI) / 3
@@ -334,6 +335,7 @@ function buildAerator(palette: Palette): ItemModel {
 
   const fan = new Group()
   fan.position.set(0.06, 0.2, 0.205)
+  fan.userData.axis = 'z'
   for (let i = 0; i < 3; i += 1) {
     const blade = new Mesh(new BoxGeometry(0.012, 0.22, 0.012), metal)
     blade.rotation.z = (i * Math.PI) / 3

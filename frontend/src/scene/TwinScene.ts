@@ -1,4 +1,5 @@
 import {
+  Color,
   DirectionalLight,
   DoubleSide,
   GridHelper,
@@ -20,7 +21,18 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js'
 import { ITEM_LEVEL_TEXT, type ItemLevel } from '../composables/useItemLevel'
 import type { Device } from '../domain/devices'
-import { AUTO_SLOTS, FIXTURES, PIPES, SCENE_LAYOUT, TANK, TANK_3D, type Placement, type Vec3 } from '../plant/layout'
+import {
+  AUTO_SLOTS,
+  FIXTURES,
+  PIPES,
+  SCENE_LAYOUT,
+  TANK,
+  TANK_3D,
+  type PipeSpec,
+  type Placement,
+  type Vec3,
+} from '../plant/layout'
+import { Bubbles, PipeFlow, School, Stream } from './effects'
 import { buildFilter, buildItem, buildTank, type ItemModel, type TankModel } from './models'
 import { roundedPath, routePoints } from './pipes'
 import { readPalette, type Palette } from './tokens'
@@ -73,6 +85,16 @@ export class TwinScene {
   private tank!: TankModel
   private items = new Map<string, SceneItem>()
   private nozzles = new Map<string, Object3D>()
+  private flows: Array<{ spec: PipeSpec; flow: PipeFlow }> = []
+  private bubbles!: Bubbles
+  private refillJet!: Stream
+  private returnJet!: Stream
+  private school!: School
+  private hemi!: HemisphereLight
+  private sun!: DirectionalLight
+  private tankLamp!: PointLight
+  /** Quanto é dia, de 0 (noite) a 1, pela luminosidade lida; anda suave. */
+  private daylight = 1
 
   private statusTimer = 0
   /** Sem mensagem há mais de 10 s: nada anda, tudo fica cinza. */
@@ -81,6 +103,8 @@ export class TwinScene {
   private t = 0
   /** Nível da água desenhado agora, em %; anda suave até a leitura. */
   private shownLevel: number | null = null
+  /** Quem pediu menos movimento no sistema não vê a bomba tremer; a cor e o painel continuam. */
+  private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
   constructor(container: HTMLElement, source: TwinSource) {
     this.container = container
@@ -122,6 +146,7 @@ export class TwinScene {
   setDevices(devices: Device[]): void {
     this.clear(this.dynamic)
     this.items.clear()
+    this.flows = []
     for (const key of [...this.nozzles.keys()]) {
       if (!key.startsWith('tank.') && !key.startsWith('filter.')) this.nozzles.delete(key)
     }
@@ -166,15 +191,16 @@ export class TwinScene {
     const p = this.palette
     this.scene.background = p['--scene-sky-day'].clone()
 
-    const hemi = new HemisphereLight(p['--scene-sky-day'], p['--scene-floor'], 1.1)
-    const sun = new DirectionalLight(0xffffff, 1.6)
-    sun.position.set(6, 10, 6)
-    sun.castShadow = true
-    sun.shadow.mapSize.set(1024, 1024)
-    Object.assign(sun.shadow.camera, { left: -7, right: 7, top: 7, bottom: -7 })
-    const lamp = new PointLight(0xffffff, 0.6, 9)
-    lamp.position.set(0, 3.4, 0.4)
-    this.fixed.add(hemi, sun, lamp)
+    this.hemi = new HemisphereLight(p['--scene-sky-day'], p['--scene-floor'], 1.1)
+    this.sun = new DirectionalLight(0xffffff, 1.6)
+    this.sun.position.set(6, 10, 6)
+    this.sun.castShadow = true
+    this.sun.shadow.mapSize.set(1024, 1024)
+    Object.assign(this.sun.shadow.camera, { left: -7, right: 7, top: 7, bottom: -7 })
+    // A luz do aquário: quase nada de dia, acesa à noite.
+    this.tankLamp = new PointLight(0xffffff, 0.6, 9)
+    this.tankLamp.position.set(0, 3.4, 0.4)
+    this.fixed.add(this.hemi, this.sun, this.tankLamp)
 
     const floor = new Mesh(
       new PlaneGeometry(30, 30),
@@ -195,6 +221,16 @@ export class TwinScene {
     filter.root.position.set(...FIXTURES.filter.position)
     this.fixed.add(filter.root)
     for (const [name, nozzle] of Object.entries(filter.nozzles)) this.nozzles.set(`filter.${name}`, nozzle)
+    // Bolhas e jatos: ficam na cena; aparecem quando o atuador liga.
+    this.bubbles = new Bubbles(p['--surface'])
+    this.refillJet = new Stream(p['--water-line'])
+    this.returnJet = new Stream(p['--water-line'])
+    this.fixed.add(this.bubbles.mesh, this.refillJet.column, this.refillJet.drops, this.returnJet.column, this.returnJet.drops)
+
+    this.school = new School([p['--brand-fish'], p['--fish-2']])
+    this.school.mesh.visible = false
+    this.fixed.add(this.school.mesh)
+
     const filterLabel = makeLabel()
     filterLabel.classList.add('is-fixture')
     filterLabel.textContent = 'Filtro'
@@ -235,7 +271,10 @@ export class TwinScene {
       )
       tube.renderOrder = 3
       tube.userData.pipe = spec.id
-      this.dynamic.add(tube)
+      // O que corre dentro: água azul, ar branco.
+      const flow = new PipeFlow(path, spec.radius, spec.medium === 'air' ? this.palette['--surface'] : this.palette['--accent'])
+      this.dynamic.add(tube, flow.mesh)
+      this.flows.push({ spec, flow })
     }
   }
 
@@ -255,6 +294,10 @@ export class TwinScene {
     if (!this.frozen) {
       this.t += dt
       this.updateWater(dt)
+      this.updateEnvironment(dt)
+      this.updateActuators(dt)
+      this.updateFish(dt)
+      this.shakePump()
       this.pulseCritical()
     }
 
@@ -309,6 +352,14 @@ export class TwinScene {
         item.labelEl.className = `twin-label level-${level}`
       }
 
+      // Lâmpada do atuador: acesa quando ligado.
+      const lamp = item.model.lamp
+      if (lamp && item.device.state_field) {
+        const on = !this.frozen && this.source.state(item.device.id, item.device.state_field) === true
+        lamp.emissive.copy(on ? this.palette['--accent'] : this.palette['--night']).multiplyScalar(on ? 1.6 : 0)
+        lamp.color.copy(on ? this.palette['--surface'] : this.palette['--metal'])
+      }
+
       // O estado vai escrito no rótulo, não só na cor.
       const text =
         level === 'vazio'
@@ -321,6 +372,98 @@ export class TwinScene {
         item.labelEl.textContent = text
       }
     }
+  }
+
+  /**
+   * O ambiente reage aos dados (WEB-07): a água turva com a turbidez e a cena
+   * vai do dia à noite pela luminosidade. Tudo anda suave até a leitura.
+   */
+  private updateEnvironment(dt: number): void {
+    const p = this.palette
+    const ease = Math.min(1, dt * 1.5)
+
+    const ntu = this.source.value(TANK.turbidity.device, TANK.turbidity.field)
+    if (ntu !== null) {
+      // Até 10 NTU é água limpa; perto dos 60 do crítico, barrenta.
+      const murk = Math.min(1, Math.max(0, (ntu - 10) / 50))
+      const target = p['--water'].clone().lerp(p['--scene-murky'], murk)
+      const material = this.tank.waterMaterial
+      material.color.lerp(target, ease)
+      material.opacity += (0.45 + 0.4 * murk - material.opacity) * ease
+    }
+
+    const lux = this.source.value(TANK.light.device, TANK.light.field)
+    if (lux !== null) {
+      // A raiz deixa o amanhecer e o entardecer visíveis, não só o meio-dia.
+      const target = Math.min(1, Math.sqrt(Math.max(0, lux) / 30000))
+      this.daylight += (target - this.daylight) * ease
+    }
+    const day = this.daylight
+    ;(this.scene.background as Color).copy(p['--scene-sky-night']).lerp(p['--scene-sky-day'], day)
+    this.hemi.intensity = 0.35 + 0.8 * day
+    this.sun.intensity = 0.15 + 1.5 * day
+    this.tankLamp.intensity = 0.3 + 2.4 * (1 - day)
+  }
+
+  /**
+   * Atuadores animados quando ligados (WEB-07): partículas nos tubos pela
+   * vazão, bolhas do aerador, jatos da reposição e do retorno e as ventoinhas.
+   */
+  private updateActuators(dt: number): void {
+    const src = this.source
+    const surfaceY = this.tank.surface.visible ? this.tank.surface.position.y : TANK_3D.sand
+
+    for (const { spec, flow } of this.flows) flow.update(dt, this.rate(spec.flow))
+
+    const aerator = src.state(TANK.aerator.device, TANK.aerator.field) === true
+    this.bubbles.update(dt, this.t, aerator, this.tank.emitters.airstone, surfaceY)
+    this.refillJet.update(dt, src.state(TANK.refill.device, TANK.refill.field) ? 1 : 0, this.tank.emitters.refill, surfaceY)
+    this.returnJet.update(dt, this.rate(TANK.flow), this.tank.emitters.return, surfaceY)
+
+    for (const item of this.items.values()) {
+      const fan = item.model.parts.fan
+      const field = item.device.state_field
+      if (fan && field && src.state(item.device.id, field)) {
+        const axis = fan.userData.axis === 'z' ? 'z' : 'x'
+        fan.rotation[axis] += dt * 18
+      }
+    }
+  }
+
+  /** Peixes só existem com água desenhada; o ritmo vem do oxigênio dissolvido. */
+  private updateFish(dt: number): void {
+    const { surface } = this.tank
+    this.school.mesh.visible = surface.visible
+    if (!surface.visible) return
+    const oxygen = this.source.value(TANK.oxygen.device, TANK.oxygen.field)
+    this.school.update(dt, this.t, oxygen, TANK_3D.sand, surface.position.y)
+  }
+
+  /**
+   * Quanto mais vibração, mais a bomba treme (WEB-07). Saudável, perto de
+   * 1 mm/s, quase não mexe; perto dos 4,5 mm/s do crítico, treme forte. Só o
+   * corpo treme: os bocais ficam presos nos tubos.
+   */
+  private shakePump(): void {
+    const body = this.items.get(TANK.vibration.device)?.model.parts.body
+    if (!body) return
+    const vibration = this.source.value(TANK.vibration.device, TANK.vibration.field)
+    const running = this.source.state(TANK.recirculation.device, TANK.recirculation.field) === true
+    const amplitude =
+      !running || vibration === null || this.reducedMotion ? 0 : Math.min(1.4, Math.max(0, (vibration - 0.5) / 4)) * 0.03
+    // Senos de frequências diferentes: tremor que não se repete a cada quadro.
+    const t = this.t
+    body.position.set(amplitude * Math.sin(t * 53), amplitude * 0.4 * Math.sin(t * 61 + 2), amplitude * Math.sin(t * 47 + 1))
+    body.rotation.z = amplitude * 1.5 * Math.sin(t * 43)
+  }
+
+  /** Quanto corre num tubo: a vazão sobre a cheia, ou 1 e 0 pelo estado do atuador. */
+  private rate(flow: { device: string; field: string; full?: number }): number {
+    if (flow.full) {
+      const value = this.source.value(flow.device, flow.field)
+      return value === null ? 0 : Math.min(1.2, Math.max(0, value / flow.full))
+    }
+    return this.source.state(flow.device, flow.field) ? 1 : 0
   }
 
   /** O crítico pulsa: chama o olho mesmo de longe, no projetor. */
