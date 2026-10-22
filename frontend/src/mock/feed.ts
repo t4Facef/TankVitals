@@ -1,7 +1,7 @@
 import type { Envelope, MessageType } from '../live/envelope'
 import type { LiveStatus } from '../live/socket'
 import { getMockPlant } from './plant'
-import { MOCK_DEVICES } from './registry'
+import { mockRegistry } from './registry'
 
 /**
  * Telemetria simulada do modo mock, no mesmo formato que o simulador de
@@ -11,6 +11,10 @@ import { MOCK_DEVICES } from './registry'
  *
  * Também manda a previsão da IA a cada 5 passos e um aviso a cada alerta que
  * abre, piora ou fecha, como o backend vai fazer pelo WebSocket.
+ *
+ * Só publica quem está ativo no cadastro e existe na planta: um dispositivo
+ * cadastrado pela tela não tem simulação e fica "sem dados", como ficaria um
+ * sensor de verdade que ainda não foi ligado.
  */
 export function startMockFeed(
   onEnvelope: (msg: Envelope) => void,
@@ -30,8 +34,10 @@ export function startMockFeed(
 
   const step = () => {
     plant.catchUp()
-    for (const device of MOCK_DEVICES) {
-      if (device.active) send(device.id, plant.payloadOf(device.id))
+    for (const device of mockRegistry.devices) {
+      if (!device.active) continue
+      const payload = plant.payloadOf(device.id)
+      if (Object.keys(payload).length) send(device.id, payload)
     }
     if (plant.t % 5 === 0) send('bomba-rec-01', plant.insight(), 'insight')
   }

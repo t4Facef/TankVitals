@@ -1,11 +1,11 @@
-import type { Device } from '../domain/devices'
+import type { Device, Rule } from '../domain/devices'
 
 /**
  * Cadastro inicial do modo simulado: o mesmo que o seed do PostgreSQL
  * (BACK-02) vai criar. Ids, campos e faixas daqui são o contrato com o
  * simulador (IOT-01) e com a IA.
  */
-export const MOCK_DEVICES: Device[] = [
+export const SEED_DEVICES: Device[] = [
   {
     id: 'temp-agua-01',
     name: 'Termômetro da água',
@@ -186,3 +186,28 @@ export const MOCK_DEVICES: Device[] = [
     fields: [],
   },
 ]
+
+/** A regra do aerador (IOT-07): liga com OD < 5 mg/L e desliga com OD ≥ 6,5. */
+export const SEED_RULES: Rule[] = [
+  {
+    id: 'aerador-od',
+    name: 'Aerador pelo oxigênio',
+    device: 'od-01',
+    field: 'oxygen_mg_l',
+    actuator: 'aerador-01',
+    on_below: 5,
+    off_at: 6.5,
+    updated_at: null,
+    updated_by: null,
+  },
+]
+
+/**
+ * O cadastro de agora no modo simulado: nasce do seed e muda pela tela
+ * Dispositivos. Fica na memória da aba, como a planta: recarregar a página
+ * volta ao seed.
+ */
+export const mockRegistry = {
+  devices: structuredClone(SEED_DEVICES),
+  rules: structuredClone(SEED_RULES),
+}
