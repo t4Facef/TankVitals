@@ -155,6 +155,51 @@ As estatísticas do histórico são calculadas sobre as leituras cruas, não sob
 os pontos agregados: é delas que saem o "tempo fora da faixa" e o "quantas
 vezes o aerador ligou" do dashboard.
 
+## Gêmeo 3D (WEB-05 a WEB-08)
+
+A cena é Three.js puro, sem TresJS, para o loop de animação ficar à vista. Ela
+**só muda com o que chega ao vivo pelo WebSocket**: lê o store de dentro do
+próprio loop e nunca é refeita a cada mensagem. Só o cadastro (item que entra
+ou sai) e a troca de contraste reconstroem os objetos.
+
+| Onde | O quê |
+| --- | --- |
+| `src/plant/layout.ts` | a posição de cada item **pelo id do cadastro** (`SCENE_LAYOUT`), as peças fixas e os tubos, sempre de um bocal a outro (`PIPES`) |
+| `src/scene/TwinScene.ts` | a cena: renderer, câmera, o loop único, cores, clique e destaque |
+| `src/scene/models.ts` | os modelos de poucos polígonos; cada um declara os próprios bocais |
+| `src/scene/pipes.ts` | o caminho dos tubos: sai e chega no eixo de cada bocal, com as curvas arredondadas |
+| `src/scene/effects.ts` | bolhas, jatos, fluxo nos tubos e o cardume, todos com `InstancedMesh` |
+| `src/scene/tokens.ts` | as cores da cena, lidas dos tokens do CSS |
+| `src/composables/useItemLevel.ts` | o estado de cada item: o pior entre a faixa e a IA, ou "sem dados" |
+| `src/components/TwinPanel.vue` | o painel ao clicar: leitura, mini gráfico ao vivo, saúde prevista e comandos |
+| `src/components/FaultControl.vue` | o painel do simulador (IOT-05): injetar falha e reparar, só para operador e admin |
+
+**O que mexe em quê:**
+
+| Dado ao vivo | Na cena |
+| --- | --- |
+| nível (`nivel-01`) | altura da água e o feixe do sensor ultrassônico |
+| turbidez (`turbidez-01`) | cor e transparência da água |
+| luminosidade (`luz-01`) | dia e noite: céu, sol e a luz do aquário |
+| oxigênio (`od-01`) | ritmo do cardume; abaixo de 4 mg/L os peixes sobem para a superfície |
+| vazão (`bomba-rec-01`) | partículas nos tubos da recirculação e o jato de retorno |
+| vibração (`bomba-rec-01`) | tremor da bomba: quanto mais vibração, mais treme |
+| estado dos atuadores | bolhas do aerador, jato da reposição, ventoinhas e lâmpadas |
+
+**Cor de cada item:** normal, atenção, crítico ou sem dados. Vale o pior entre a
+faixa do cadastro, a saúde prevista pela IA (vermelho abaixo de 40 % ou com
+menos de 24 h de vida útil, amarelo abaixo de 70 %) e um alerta aberto da IA
+(os alertas sem `field`). O estado também vai escrito no rótulo.
+
+**Sem dados:** se nada chegar por 10 s, a cena congela, fica cinza e avisa; volta
+sozinha quando as leituras voltam. No modo simulado, o botão "Parar o
+simulador", no rodapé do menu, corta as mensagens para testar isso.
+
+**Para pôr um item novo na cena:** dê a ele uma posição em `SCENE_LAYOUT`, pelo
+id. Sem posição, ele entra sozinho: sonda nova na borda da frente do tanque,
+outro tipo numa fila no chão. Tubo novo vai em `PIPES`, de `<id>.<bocal>` a
+`<id>.<bocal>`; ele só aparece com os dois bocais na cena.
+
 ## Página Ferramentas
 
 Os links do InfluxDB, do RabbitMQ e do pgAdmin apontam para `127.0.0.1`, nas
