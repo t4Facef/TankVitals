@@ -151,6 +151,20 @@ export interface CommandRequest {
   value?: boolean | string
 }
 
+/**
+ * Modos de falha do comando `inject_fault` (IOT-08): o valor vai como texto.
+ * A bomba degrada aos poucos até quebrar; `repair` volta ao estado de nova.
+ */
+export const FAULT_MODES = ['rolamento', 'entupimento', 'superaquecimento', 'desbalanceamento'] as const
+export type FaultMode = (typeof FAULT_MODES)[number]
+
+export const FAULT_LABEL: Record<FaultMode, string> = {
+  rolamento: 'Rolamento gasto',
+  entupimento: 'Filtro entupido',
+  superaquecimento: 'Superaquecimento',
+  desbalanceamento: 'Rotor desbalanceado',
+}
+
 /** A API só confirma que mandou; quem confirma o novo estado é a telemetria. */
 export interface CommandAck {
   id: string

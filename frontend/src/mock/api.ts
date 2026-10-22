@@ -1,21 +1,22 @@
 import { ApiError } from '../api/http'
-import type {
-  Alert,
-  CommandAck,
-  CommandRequest,
-  Device,
-  DeviceInput,
-  DeviceUpdate,
-  HistoryResponse,
-  Rule,
-  RuleUpdate,
+import {
+  FAULT_MODES,
+  type Alert,
+  type CommandAck,
+  type CommandRequest,
+  type Device,
+  type DeviceInput,
+  type DeviceUpdate,
+  type HistoryResponse,
+  type Rule,
+  type RuleUpdate,
 } from '../domain/devices'
 import type { AuditPage, AuditQuery } from '../domain/audit'
 import { describeRange, firstIssue, validateDevice, validateRule } from '../domain/registry'
 import { useAuthStore, type Role } from '../stores/auth'
 import type { HistoryRange } from '../types'
 import { queryAudit, recordAudit } from './audit'
-import { FAULT_MODES, getMockPlant } from './plant'
+import { getMockPlant } from './plant'
 import { mockRegistry } from './registry'
 
 /**

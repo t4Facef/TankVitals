@@ -1,5 +1,13 @@
 import { classify } from '../alerts'
-import { variableId, type Alert, type CommandRequest, type HistoryResponse, type Series } from '../domain/devices'
+import {
+  FAULT_MODES,
+  variableId,
+  type Alert,
+  type CommandRequest,
+  type FaultMode,
+  type HistoryResponse,
+  type Series,
+} from '../domain/devices'
 import type { HistoryPoint, HistoryRange, MetricThreshold } from '../types'
 import { mockRegistry, SEED_DEVICES } from './registry'
 
@@ -96,9 +104,6 @@ const ALERT_CLOSE_AFTER = 30
 const MAX_ALERTS = 300
 /** Passo da simulação do passado distante, em segundos. */
 const COARSE_STEP_S = 10
-
-export const FAULT_MODES = ['rolamento', 'entupimento', 'superaquecimento', 'desbalanceamento'] as const
-export type FaultMode = (typeof FAULT_MODES)[number]
 
 interface OpenAlertState {
   alert: Alert
