@@ -123,6 +123,7 @@ export const PAGES: PageDef[] = [
     icon: ScrollText,
     group: 'Sistema',
     permission: 'viewAudit',
+    component: () => import('../views/AuditView.vue'),
     task: 'WEB-04',
     description: 'Logins, comandos e jobs registrados no PostgreSQL.',
   },
