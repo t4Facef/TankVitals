@@ -311,6 +311,8 @@ flowchart TB
 
   *Pronto:* mudar a faixa de um sensor muda a cor no dashboard, sem reiniciar nada.
 
+  *O front já espera:* `POST /api/devices`, `PUT /api/devices/{id}`, `GET /api/rules` e `PUT /api/rules/{id}`, com os formatos no contrato do `frontend/README.md`. A tela (WEB-03) já usa.
+
 - [ ] **BACK-07 · Ollama no Compose**\
   O LLM roda na própria máquina, dentro do compose, sem chave de API e sem nuvem.
   - Serviço `ollama`, com um volume para os modelos.
@@ -373,13 +375,15 @@ flowchart TB
 
   *Pronto:* tudo atualiza sozinho, sem recarregar a página.
 
-- [ ] **WEB-03 · Tela Dispositivos**\
+- [x] **WEB-03 · Tela Dispositivos**\
   É o cadastro e gerenciamento dos dispositivos que o enunciado exige.
   - Lista dos dispositivos com o estado ao vivo: online ou não, e a última leitura.
   - Formulário (admin) para cadastrar, editar, desativar e ajustar as faixas.
   - Aba de regras, com os limites do aerador editáveis.
 
   *Pronto:* um sensor cadastrado pela tela aparece na lista como "sem dados".
+
+  *No front:* `frontend/src/views/DevicesView.vue`, funcionando no modo simulado. As rotas que ela espera da BACK-06 estão no contrato do `frontend/README.md`.
 
 - [ ] **WEB-04 · Auditoria e Ferramentas**\
   A auditoria é só para o admin. A página Ferramentas junta os links das
