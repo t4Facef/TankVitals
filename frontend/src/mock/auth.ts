@@ -1,5 +1,6 @@
 import { ApiError } from '../api/http'
 import type { Role } from '../stores/auth'
+import { recordAudit } from './audit'
 
 /**
  * Login simulado do modo mock.
@@ -22,6 +23,9 @@ const SESSION_MINUTES = 30
 export function mockLogin(username: string, password: string): string {
   const name = username.trim().toLowerCase()
   const role = MOCK_USERS[name]
+  // Todo login vai para a auditoria, certo ou errado (BACK-03).
+  const ok = Boolean(role && password)
+  recordAudit({ user: name, type: 'login', action: ok ? 'login' : 'login_failed', target: null, detail: null, ok })
   if (!role || !password) throw new ApiError('Usuário ou senha inválidos.', 401)
 
   const claims = {
