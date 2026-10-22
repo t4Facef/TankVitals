@@ -96,7 +96,7 @@ onBeforeUnmount(() => {
         <h2>Gêmeo 3D</h2>
         <p>
           O tanque, a bomba e os atuadores em 3D, movidos só pelos dados que chegam ao vivo pelo WebSocket. Arraste para
-          girar e use a roda do mouse para aproximar.
+          girar e use a roda do mouse (ou dois dedos) para aproximar.
         </p>
       </div>
     </header>
@@ -232,6 +232,7 @@ onBeforeUnmount(() => {
   }
 }
 
+
 .twin-host {
   position: relative;
   height: min(68vh, 620px);
@@ -327,6 +328,21 @@ onBeforeUnmount(() => {
   font-size: 0.875rem;
   font-weight: 600;
 }
+
+/* Celular: canvas mais baixo, para a planta não encolher num retrato estreito. */
+@media (max-width: 700px) {
+  .twin-host {
+    height: 400px;
+    min-height: 0;
+  }
+
+  .twin-legend {
+    right: 12px;
+    gap: 4px 10px;
+    padding: 6px 10px;
+    font-size: 0.75rem;
+  }
+}
 </style>
 
 <style>
@@ -362,6 +378,13 @@ onBeforeUnmount(() => {
 .twin-label.is-fixture {
   color: var(--muted);
   border-style: dashed;
+}
+
+@media (max-width: 700px) {
+  .twin-label {
+    padding: 2px 7px;
+    font-size: 0.6875rem;
+  }
 }
 
 /* Rótulo de item: clicável, abre o painel. */
