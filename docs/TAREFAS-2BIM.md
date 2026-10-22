@@ -307,7 +307,7 @@ flowchart TB
   - Criar, editar e desativar dispositivos e faixas (admin).
   - Criar e editar regras, como os limites do aerador (admin).
   - Registrar cada mudança na auditoria.
-  - `GET /api/audit` (admin), paginado e com filtro por tipo e usuário.
+  - `GET /api/audit` (admin), paginado e com filtro por tipo e usuário (formato no contrato do `frontend/README.md`).
 
   *Pronto:* mudar a faixa de um sensor muda a cor no dashboard, sem reiniciar nada.
 
@@ -385,13 +385,15 @@ flowchart TB
 
   *No front:* `frontend/src/views/DevicesView.vue`, funcionando no modo simulado. As rotas que ela espera da BACK-06 estão no contrato do `frontend/README.md`.
 
-- [ ] **WEB-04 · Auditoria e Ferramentas**\
+- [x] **WEB-04 · Auditoria e Ferramentas**\
   A auditoria é só para o admin. A página Ferramentas junta os links das
   interfaces que ficam abertas em `127.0.0.1`, como o enunciado pede.
   - Auditoria: tabela com logins, comandos e jobs, com filtro por tipo e usuário.
   - Ferramentas: links para o InfluxDB, o RabbitMQ, o pgAdmin e a documentação da API (`/api/docs`).
 
   *Pronto:* os links abrem na máquina da demo.
+
+  *No front:* `frontend/src/views/AuditView.vue` e `ToolsView.vue`. A rota `GET /api/audit` que a Auditoria espera está no contrato do `frontend/README.md`; as portas das interfaces, no `frontend/.env.example`.
 
 - [ ] **WEB-05 · 3D: cena base**\
   É o gêmeo digital do tanque. Cena simples, de poucos polígonos, serve: o que

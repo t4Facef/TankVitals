@@ -62,6 +62,9 @@ Quando o backend tiver as rotas do contrato abaixo, ponha `VITE_MOCK=false` no
 | `src/domain/registry.ts` | as regras do cadastro (id, faixas, limites da regra), usadas pelo formulário e pelo modo simulado |
 | `src/composables/useDeviceState.ts` | a situação de cada dispositivo: online, parou ou sem dados, e o pior nível das faixas |
 | `src/views/DevicesView.vue` | a tela Dispositivos (WEB-03): lista ao vivo, formulário do admin e aba de regras |
+| `src/views/AuditView.vue` | a Auditoria (WEB-04), só admin: filtro por tipo e usuário, paginada |
+| `src/views/ToolsView.vue` | as Ferramentas (WEB-04): links do InfluxDB, RabbitMQ, pgAdmin e da documentação da API |
+| `src/mock/audit.ts` | a auditoria do modo simulado: 3 dias inventados e o que a pessoa faz no navegador |
 
 **Para fazer uma tela:** crie a view em `src/views/` e aponte o `component` dela
 em `src/router/pages.ts`. Enquanto ela não existe, a rota mostra um placeholder
@@ -140,6 +143,7 @@ formatos estão em `src/domain/devices.ts` e o modo simulado
 | `PUT /api/rules/{id}` | (admin) corpo `{on_below, off_at}`, com `off_at > on_below`; devolve a regra | BACK-06 |
 | `GET /api/history?range=6h` | `{range, from, to, step_s, series}`; cada série com `device, field, points` (uns 360 pontos) e `stats` (`count, min, max, avg, last, out_of_range_s`; nos campos de estado, `on_s` e `turn_ons`). `&device=od-01` filtra | BACK-05 |
 | `GET /api/alerts?status=all` | `[{id, device, field, level, message, value, opened_at, closed_at}]`, os mais novos primeiro | BACK-05 |
+| `GET /api/audit?page=1&page_size=25` | (admin) `{items, total, page, page_size}`, os mais novos primeiro; cada item `{id, ts, user, type, action, target, detail, ok}`. `&type=login` e `&user=admin` filtram. Tipos: `login`, `command`, `registry`, `job`, `assistant`; as ações conhecidas estão em `src/domain/audit.ts` | BACK-06 |
 | `POST /api/devices/{id}/command` | corpo `{command: "on", value: true}` (ou `inject_fault` e `repair`); devolve `{id, status: "sent"}`. O estado novo chega pela telemetria | IOT-04 |
 
 Nas rotas de admin, o modo simulado responde 403 para os outros papéis, como a
@@ -150,6 +154,14 @@ de erro que a tela mostra é o `detail` da resposta.
 As estatísticas do histórico são calculadas sobre as leituras cruas, não sobre
 os pontos agregados: é delas que saem o "tempo fora da faixa" e o "quantas
 vezes o aerador ligou" do dashboard.
+
+## Página Ferramentas
+
+Os links do InfluxDB, do RabbitMQ e do pgAdmin apontam para `127.0.0.1`, nas
+portas padrão (8086, 15672 e 5050), porque o compose publica essas interfaces
+só ali (PLAT-08). Se a porta for outra, ajuste `VITE_INFLUXDB_URL`,
+`VITE_RABBITMQ_URL` e `VITE_PGADMIN_URL` no `.env`. A documentação da API é
+`/api/docs`, pelo mesmo endereço do app.
 
 ## Observação sobre Chart.js
 
