@@ -7,6 +7,7 @@ import { useLiveValues } from '../composables/useLiveValues'
 import { useRecentSeries } from '../composables/useRecentSeries'
 import type { TankSummary } from '../composables/useTwinTanks'
 import { controllables, type Alert, type Device } from '../domain/devices'
+import { formatRul } from '../domain/insights'
 import { fieldIcon, KIND_ICON, LEVEL_ICON, UI_ICON } from '../icons'
 import { TANK } from '../plant/layout'
 import ActuatorControl from './ActuatorControl.vue'
@@ -162,7 +163,7 @@ const levelIcon = computed(() => (props.tank.level === 'vazio' ? UI_ICON.semDado
           <template v-if="pump.health">
             <strong>{{ format(pump.health.health, 0) }} %</strong>
             <span :class="['table-level', `badge-${pump.health.level}`]">{{ LEVEL_TEXT[pump.health.level] }}</span>
-            <small>saúde prevista · vida útil {{ pump.health.rul_h === null ? '—' : `${format(pump.health.rul_h, 0)} h` }}</small>
+            <small>saúde prevista · vida útil {{ pump.health.rul_h === null ? '—' : formatRul(pump.health.rul_h) }}</small>
           </template>
           <small v-else>Aguardando a primeira previsão da IA.</small>
         </span>

@@ -7,6 +7,9 @@ import type { HistoryRange } from '../types'
  * Histórico de todas as variáveis no período escolhido, buscado de uma vez e
  * renovado sozinho. A cada renovação a tela continua mostrando o histórico
  * anterior: só a troca de período mostra o "carregando".
+ *
+ * Por padrão são as leituras (`GET /api/history`); a Insights passa
+ * `getInsightHistory`, que devolve as previsões da IA no mesmo formato.
  */
 const REFRESH_MS: Record<HistoryRange, number> = {
   '1h': 10_000,
@@ -15,7 +18,10 @@ const REFRESH_MS: Record<HistoryRange, number> = {
   '7d': 300_000,
 }
 
-export function useHistoryData(range: Ref<HistoryRange>) {
+export function useHistoryData(
+  range: Ref<HistoryRange>,
+  fetchHistory: (range: HistoryRange) => Promise<HistoryResponse> = getHistory,
+) {
   const data = shallowRef<HistoryResponse | null>(null)
   const byVariable = shallowRef(new Map<string, Series>())
   const loading = ref(false)
@@ -28,7 +34,7 @@ export function useHistoryData(range: Ref<HistoryRange>) {
     const current = ++request
     if (showLoading) loading.value = true
     try {
-      const response = await getHistory(range.value)
+      const response = await fetchHistory(range.value)
       // Uma resposta atrasada de outro período não sobrescreve a atual.
       if (current !== request) return
       data.value = response

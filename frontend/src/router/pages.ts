@@ -97,6 +97,7 @@ export const PAGES: PageDef[] = [
     title: 'Insights',
     icon: HeartPulse,
     group: 'Inteligência artificial',
+    component: () => import('../views/InsightsView.vue'),
     task: 'IA-09',
     description: 'Saúde, vida útil restante, tendência e alertas de cada equipamento.',
   },

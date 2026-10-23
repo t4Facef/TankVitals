@@ -6,6 +6,7 @@ import { ITEM_LEVEL_TEXT, type ItemLevel } from '../composables/useItemLevel'
 import { useLiveValues } from '../composables/useLiveValues'
 import { useRecentSeries } from '../composables/useRecentSeries'
 import type { Device } from '../domain/devices'
+import { formatRul } from '../domain/insights'
 import { KIND_LABEL } from '../domain/registry'
 import { KIND_ICON, LEVEL_ICON, UI_ICON } from '../icons'
 import ActuatorControl from './ActuatorControl.vue'
@@ -127,12 +128,15 @@ const canFault = computed(() => props.device.commands.includes('inject_fault'))
         <span :class="['table-level', `badge-${health.level}`]">{{ LEVEL_TEXT[health.level] }}</span>
         <p>
           Vida útil restante:
-          <b>{{ health.rul_h === null ? '—' : `${health.rul_h.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} h` }}</b>
+          <b>{{ health.rul_h === null ? '—' : formatRul(health.rul_h) }}</b>
           <template v-if="health.model"> · modelo {{ health.model }}</template>
         </p>
       </div>
       <p v-else-if="device.kind === 'equipment'" class="small-note">Aguardando a primeira previsão da IA.</p>
       <p v-else class="small-note">A IA prevê a saúde dos equipamentos monitorados; este item não tem previsão.</p>
+      <RouterLink v-if="device.kind === 'equipment'" class="twin-insights" :to="{ name: 'insights', hash: `#${device.id}` }">
+        Tendência e o que fazer, na Insights <component :is="UI_ICON.abrir" :size="14" aria-hidden="true" />
+      </RouterLink>
     </section>
 
     <section v-if="canCommand" class="twin-item-block">
@@ -286,6 +290,20 @@ const canFault = computed(() => props.device.commands.includes('inject_fault'))
 
 .twin-health b {
   color: var(--ink);
+}
+
+.twin-insights {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 8px;
+  color: var(--accent);
+  font-size: 0.875rem;
+  font-weight: var(--fw-heavy);
+  text-decoration: none;
+}
+
+.twin-insights:hover {
+  text-decoration: underline;
 }
 
 .twin-actuator {

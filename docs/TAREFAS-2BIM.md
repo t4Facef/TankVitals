@@ -82,6 +82,8 @@ flowchart TB
 
   *Pronto:* uma pessoa de cada frente revisou e aprovou.
 
+  *Proposta escrita:* `docs/ARQUITETURA.md`, da §11 à §17, a partir do que o front já usa no modo simulado. Falta a revisão de cada frente.
+
 - [ ] **PLAT-02 · Script de segredos**\
   O enunciado proíbe senha no Git e senha padrão do tipo admin/admin. A saída é
   um script que gera tudo na máquina de cada um.
@@ -307,11 +309,11 @@ flowchart TB
   - Criar, editar e desativar dispositivos e faixas (admin).
   - Criar e editar regras, como os limites do aerador (admin).
   - Registrar cada mudança na auditoria.
-  - `GET /api/audit` (admin), paginado e com filtro por tipo e usuário (formato no contrato do `frontend/README.md`).
+  - `GET /api/audit` (admin), paginado e com filtro por tipo e usuário (formato na §17 do `docs/ARQUITETURA.md`).
 
   *Pronto:* mudar a faixa de um sensor muda a cor no dashboard, sem reiniciar nada.
 
-  *O front já espera:* `POST /api/devices`, `PUT /api/devices/{id}`, `GET /api/rules` e `PUT /api/rules/{id}`, com os formatos no contrato do `frontend/README.md`. A tela (WEB-03) já usa.
+  *O front já espera:* `POST /api/devices`, `PUT /api/devices/{id}`, `GET /api/rules` e `PUT /api/rules/{id}`, com os formatos na §17 do `docs/ARQUITETURA.md`. A tela (WEB-03) já usa.
 
 - [ ] **BACK-07 · Ollama no Compose**\
   O LLM roda na própria máquina, dentro do compose, sem chave de API e sem nuvem.
@@ -383,7 +385,7 @@ flowchart TB
 
   *Pronto:* um sensor cadastrado pela tela aparece na lista como "sem dados".
 
-  *No front:* `frontend/src/views/DevicesView.vue`, funcionando no modo simulado: cartões por tanque com a leitura ao vivo, resumo que filtra, detalhe lateral e o formulário com o id sugerido pela convenção. As rotas que ela espera da BACK-06 estão no contrato do `frontend/README.md`.
+  *No front:* `frontend/src/views/DevicesView.vue`, funcionando no modo simulado: cartões por tanque com a leitura ao vivo, resumo que filtra, detalhe lateral e o formulário com o id sugerido pela convenção. As rotas que ela espera da BACK-06 estão na §17 do `docs/ARQUITETURA.md`.
 
 - [x] **WEB-04 · Auditoria e Ferramentas**\
   A auditoria é só para o admin. A página Ferramentas junta os links das
@@ -393,7 +395,7 @@ flowchart TB
 
   *Pronto:* os links abrem na máquina da demo.
 
-  *No front:* `frontend/src/views/AuditView.vue` e `ToolsView.vue`. A rota `GET /api/audit` que a Auditoria espera está no contrato do `frontend/README.md`; as portas das interfaces, no `frontend/.env.example`.
+  *No front:* `frontend/src/views/AuditView.vue` e `ToolsView.vue`. A rota `GET /api/audit` que a Auditoria espera está na §17 do `docs/ARQUITETURA.md`; as portas das interfaces, no `frontend/.env.example`.
 
 - [x] **WEB-05 · 3D: cena base**\
   É o gêmeo digital do tanque. Cena simples, de poucos polígonos, serve: o que
@@ -521,6 +523,8 @@ flowchart TB
 
   *Pronto:* a falha injetada abre um alerta só, e o reparo fecha.
 
+  *No modo simulado do front:* `frontend/src/mock/plant.ts` já imita essa regra, com o alerta da IA de `field: null`, para a Insights, o dashboard e o 3D terem o que mostrar.
+
 - [ ] **IA-09 · Tela Insights**\
   É o resumo da IA para o usuário, por equipamento.
   - Saúde em semáforo (verde, amarelo, vermelho) e vida útil restante em horas.
@@ -530,3 +534,5 @@ flowchart TB
   - Se a WEB adiantar, pode pegar esta tela.
 
   *Pronto:* durante a falha injetada, a Insights e o 3D mudam juntos.
+
+  *Já existe no front:* `frontend/src/views/InsightsView.vue`, funcionando no modo simulado: semáforo, saúde e vida útil, tendência pelo `GET /api/insights/history` (formato na §17 do `docs/ARQUITETURA.md`), sinais das leituras e alertas com o que fazer. Falta o modelo de verdade (IA-07) e a rota do histórico.

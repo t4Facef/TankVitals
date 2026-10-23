@@ -105,9 +105,30 @@ const MAX_ALERTS = 300
 /** Passo da simulação do passado distante, em segundos. */
 const COARSE_STEP_S = 10
 
+/** A bomba que a "IA" do modo simulado acompanha. */
+const PUMP = 'bomba-rec-01'
+/** De quanto em quanto tempo sai uma previsão, como a inferência publicaria. */
+const INSIGHT_EVERY_S = 5
+const INSIGHT_RAW = RAW_S / INSIGHT_EVERY_S
+const INSIGHT_FIELDS = ['health', 'rul_h'] as const
+/** Teto da vida útil (IA-05): uma bomba saudável não tem hora marcada para falhar. */
+const RUL_CAP_H = 168
+/** Previsões ruins seguidas que abrem o alerta da IA, e boas que fecham (IA-08). */
+const AI_OPEN_AFTER = 3
+const AI_CLOSE_AFTER = 10
+
 interface OpenAlertState {
   alert: Alert
   okStreak: number
+}
+
+/** Uma previsão da IA simulada, no formato do payload `insight` (com o segundo em que saiu). */
+export interface MockInsight {
+  device: string
+  t: number
+  health: number
+  rul_h: number
+  model_version: string
 }
 
 export class MockPlant {
@@ -141,6 +162,18 @@ export class MockPlant {
   private readonly alertLog: Alert[] = []
   private readonly openAlerts = new Map<number, OpenAlertState>()
   private alertSeq = 0
+
+  /** Última previsão, ou `null` com a bomba desativada (sem telemetria, a IA não prevê). */
+  lastInsight: MockInsight | null = null
+  // A última hora previsão a previsão; o resto, em baldes por minuto, como as leituras.
+  private readonly insightTick = new Float64Array(INSIGHT_RAW).fill(-1)
+  private readonly insightRaw = INSIGHT_FIELDS.map(() => new Float32Array(INSIGHT_RAW))
+  private readonly insightSum = INSIGHT_FIELDS.map(() => new Float64Array(BUCKETS))
+  private readonly insightMin = INSIGHT_FIELDS.map(() => new Float32Array(BUCKETS))
+  private readonly insightMax = INSIGHT_FIELDS.map(() => new Float32Array(BUCKETS))
+  private readonly insightCount = new Uint8Array(BUCKETS)
+  private aiAlert: OpenAlertState | null = null
+  private badStreak = 0
 
   /** Avisado quando um alerta abre, piora ou fecha (o feed manda pelo "WebSocket"). */
   onAlert: ((alert: Alert) => void) | null = null
@@ -188,21 +221,6 @@ export class MockPlant {
     return payload
   }
 
-  /**
-   * Saúde e vida útil "previstas", até a IA de verdade (IA-07) existir. Imita
-   * um modelo: não sabe da falha na hora em que ela entra, só percebe a
-   * degradação aos poucos, e a vida útil tem o teto de 168 h da IA-05. Com a
-   * falha injetada, a bomba passa a atenção em uns 2,5 min e a crítico em uns 3.
-   */
-  insight(): { health: number; rul_h: number; model_version: string } {
-    const progress = this.fault?.progress ?? 0
-    return {
-      health: round(Math.max(2, 95 - 90 * progress ** 1.4 + noise(1)), 1),
-      rul_h: round(Math.min(168, Math.max(0.5, 168 * (1 - progress) ** 3 + noise(2))), 1),
-      model_version: 'mock',
-    }
-  }
-
   command(deviceId: string, request: CommandRequest): void {
     if (request.command === 'on' && typeof request.value === 'boolean') {
       if (deviceId === 'aerador-01') this.aerator = request.value
@@ -222,26 +240,58 @@ export class MockPlant {
   }
 
   history(range: HistoryRange, devices?: string[]): HistoryResponse {
-    const span = RANGE_S[range]
-    const to = this.t
-    const from = to - span + 1
-    const step = span / POINTS_PER_SERIES
+    const { from, to } = this.window(range)
     const series: Series[] = []
 
     CHANNELS.forEach((channel, index) => {
       if (devices && !devices.includes(channel.device)) return
-      const points: HistoryPoint[] = []
-      for (let k = 0; k < POINTS_PER_SERIES; k += 1) {
-        const start = from + k * step
-        const end = start + step
-        const mean = range === '1h' ? this.rawMean(index, start, end) : this.bucketMean(index, start, end)
-        if (mean !== null) {
-          points.push({ t: new Date(end * 1000).toISOString(), v: round(mean, channel.decimals + 1) })
-        }
-      }
+      const points = this.sample(range, channel.decimals + 1, (start, end) =>
+        range === '1h' ? this.rawMean(index, start, end) : this.bucketMean(index, start, end),
+      )
       series.push({ device: channel.device, field: channel.field, points, stats: this.statsOf(index, channel, from, to) })
     })
 
+    return this.response(range, series)
+  }
+
+  /**
+   * Histórico das previsões (`GET /api/insights/history`): o mesmo formato do
+   * histórico das leituras, com as séries `health` e `rul_h` da bomba.
+   */
+  insightHistory(range: HistoryRange, devices?: string[]): HistoryResponse {
+    const { from, to } = this.window(range)
+    const series: Series[] = []
+    if (!devices || devices.includes(PUMP)) {
+      INSIGHT_FIELDS.forEach((field, k) => {
+        const points = this.sample(range, 1, (start, end) =>
+          range === '1h' ? this.insightRawMean(k, start, end) : this.insightBucketMean(k, start, end),
+        )
+        series.push({ device: PUMP, field, points, stats: this.insightStats(k, from, to) })
+      })
+    }
+    return this.response(range, series)
+  }
+
+  private window(range: HistoryRange): { from: number; to: number; step: number } {
+    const span = RANGE_S[range]
+    return { from: this.t - span + 1, to: this.t, step: span / POINTS_PER_SERIES }
+  }
+
+  /** Os ~360 pontos do gráfico: a média de cada fatia do período. */
+  private sample(range: HistoryRange, decimals: number, mean: (start: number, end: number) => number | null): HistoryPoint[] {
+    const { from, step } = this.window(range)
+    const points: HistoryPoint[] = []
+    for (let k = 0; k < POINTS_PER_SERIES; k += 1) {
+      const start = from + k * step
+      const end = start + step
+      const value = mean(start, end)
+      if (value !== null) points.push({ t: new Date(end * 1000).toISOString(), v: round(value, decimals) })
+    }
+    return points
+  }
+
+  private response(range: HistoryRange, series: Series[]): HistoryResponse {
+    const { from, to, step } = this.window(range)
     return {
       range,
       from: new Date(from * 1000).toISOString(),
@@ -297,7 +347,8 @@ export class MockPlant {
       const vibration =
         1.1 + (mode === 'rolamento' ? 4.5 * progress ** 2 : mode === 'desbalanceamento' ? 3 * progress : 0.3 * progress)
       v[I.vibration] = vibration + noise(0.12)
-      v[I.current] = 2.6 + (mode === 'entupimento' ? 1 : 0.3) * progress + noise(0.04)
+      // Filtro entupido: passa menos água, o motor faz menos força e a corrente cai junto com a vazão (IA-01).
+      v[I.current] = 2.6 + (mode === 'entupimento' ? -0.9 : 0.3) * progress + noise(0.04)
       v[I.flow] = 49 - (mode === 'entupimento' ? 30 : 5) * progress + noise(0.8)
     } else {
       v[I.vibration] = Math.abs(noise(0.02))
@@ -311,6 +362,79 @@ export class MockPlant {
     v[I.running] = this.recirculation ? 1 : 0
 
     this.record(t, dt)
+    if (Math.floor(t / INSIGHT_EVERY_S) > Math.floor((t - dt) / INSIGHT_EVERY_S)) this.predict(t)
+  }
+
+  /**
+   * Saúde e vida útil "previstas", até a IA de verdade (IA-07) existir. Imita
+   * um modelo: não sabe da falha na hora em que ela entra, só percebe a
+   * degradação aos poucos, e a vida útil fica no teto de 168 h enquanto a
+   * bomba está boa. Com a falha injetada, a bomba passa a atenção em uns
+   * 2,5 min e a crítico em uns 3; o alerta da IA abre logo depois.
+   */
+  private predict(t: number): void {
+    if (!CHANNELS[I.vibration].active) {
+      this.lastInsight = null
+      this.badStreak = 0
+      if (this.aiAlert) this.closeAiAlert(t)
+      return
+    }
+    const progress = this.fault?.progress ?? 0
+    const health = round(clamp(95 - 90 * progress ** 1.4 + noise(1), 2, 100), 1)
+    const rul = round(clamp(190 * (1 - progress) ** 3 + noise(2), 0.5, RUL_CAP_H), 1)
+    this.lastInsight = { device: PUMP, t, health, rul_h: rul, model_version: 'mock' }
+
+    const tick = Math.floor(t / INSIGHT_EVERY_S)
+    const raw = tick % INSIGHT_RAW
+    const slot = Math.floor(t / BUCKET_S) % BUCKETS
+    this.insightTick[raw] = tick
+    ;[health, rul].forEach((value, k) => {
+      this.insightRaw[k][raw] = value
+      this.insightSum[k][slot] += value
+      this.insightMin[k][slot] = Math.min(this.insightMin[k][slot], value)
+      this.insightMax[k][slot] = Math.max(this.insightMax[k][slot], value)
+    })
+    this.insightCount[slot] += 1
+
+    this.trackAiAlert(health, rul, t)
+  }
+
+  /**
+   * Alerta da IA com histerese (IA-08): 3 previsões ruins seguidas (saúde
+   * abaixo de 40 ou vida útil abaixo de 24 h) abrem, 10 boas fecham. Sem isso
+   * o ruído abriria e fecharia o alerta a cada previsão.
+   */
+  private trackAiAlert(health: number, rul: number, t: number): void {
+    if (health < 40 || rul < 24) {
+      this.badStreak += 1
+      if (this.aiAlert) this.aiAlert.okStreak = 0
+      else if (this.badStreak >= AI_OPEN_AFTER) {
+        const pt = (value: number) => value.toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+        this.aiAlert = {
+          alert: this.openAlert({
+            device: PUMP,
+            field: null,
+            level: 'critico',
+            message: `Falha prevista pela IA: saúde em ${pt(health)} % e vida útil de ${pt(rul)} h`,
+            value: null,
+            opened_at: new Date(t * 1000).toISOString(),
+          }),
+          okStreak: 0,
+        }
+      }
+      return
+    }
+    this.badStreak = 0
+    if (!this.aiAlert) return
+    this.aiAlert.okStreak += 1
+    if (this.aiAlert.okStreak >= AI_CLOSE_AFTER) this.closeAiAlert(t)
+  }
+
+  private closeAiAlert(t: number): void {
+    if (!this.aiAlert) return
+    this.aiAlert.alert.closed_at = new Date(t * 1000).toISOString()
+    this.notify(this.aiAlert.alert)
+    this.aiAlert = null
   }
 
   private record(t: number, dt: number): void {
@@ -325,6 +449,12 @@ export class MockPlant {
         this.bucketMax[i][slot] = -Infinity
         this.bucketOut[i][slot] = 0
         this.bucketTurnOns[i][slot] = 0
+      }
+      this.insightCount[slot] = 0
+      for (let k = 0; k < INSIGHT_FIELDS.length; k += 1) {
+        this.insightSum[k][slot] = 0
+        this.insightMin[k][slot] = Infinity
+        this.insightMax[k][slot] = -Infinity
       }
     }
     this.bucketCount[slot] += dt
@@ -351,21 +481,15 @@ export class MockPlant {
     const open = this.openAlerts.get(index)
     if (level !== 'ok') {
       if (!open) {
-        this.alertSeq += 1
-        const alert: Alert = {
-          id: `mock-alert-${this.alertSeq}`,
+        const alert = this.openAlert({
           device: channel.device,
           field: channel.field,
           level,
           message: alertMessage(channel, level),
           value: round(value, channel.decimals),
           opened_at: new Date(t * 1000).toISOString(),
-          closed_at: null,
-        }
-        this.alertLog.push(alert)
-        if (this.alertLog.length > MAX_ALERTS) this.alertLog.shift()
+        })
         this.openAlerts.set(index, { alert, okStreak: 0 })
-        this.notify(alert)
       } else {
         open.okStreak = 0
         if (level === 'critico' && open.alert.level === 'atencao') {
@@ -383,6 +507,15 @@ export class MockPlant {
         this.notify(open.alert)
       }
     }
+  }
+
+  private openAlert(fields: Omit<Alert, 'id' | 'closed_at'>): Alert {
+    this.alertSeq += 1
+    const alert: Alert = { id: `mock-alert-${this.alertSeq}`, ...fields, closed_at: null }
+    this.alertLog.push(alert)
+    if (this.alertLog.length > MAX_ALERTS) this.alertLog.shift()
+    this.notify(alert)
+    return alert
   }
 
   private notify(alert: Alert): void {
@@ -445,6 +578,48 @@ export class MockPlant {
       last: round(last, d),
       ...(channel.range ? { out_of_range_s: out } : {}),
     }
+  }
+
+  private insightRawMean(k: number, start: number, end: number): number | null {
+    let sum = 0
+    let count = 0
+    for (let tick = Math.ceil(start / INSIGHT_EVERY_S); tick * INSIGHT_EVERY_S < end; tick += 1) {
+      const raw = tick % INSIGHT_RAW
+      if (this.insightTick[raw] !== tick) continue
+      sum += this.insightRaw[k][raw]
+      count += 1
+    }
+    return count ? sum / count : null
+  }
+
+  private insightBucketMean(k: number, start: number, end: number): number | null {
+    let sum = 0
+    let count = 0
+    for (let minute = Math.floor(start / BUCKET_S); minute < Math.ceil(end / BUCKET_S); minute += 1) {
+      const slot = minute % BUCKETS
+      if (this.bucketMinute[slot] !== minute) continue
+      sum += this.insightSum[k][slot]
+      count += this.insightCount[slot]
+    }
+    return count ? sum / count : null
+  }
+
+  private insightStats(k: number, from: number, to: number): Series['stats'] {
+    let count = 0
+    let sum = 0
+    let min = Infinity
+    let max = -Infinity
+    for (let minute = Math.floor(from / BUCKET_S); minute <= Math.floor(to / BUCKET_S); minute += 1) {
+      const slot = minute % BUCKETS
+      if (this.bucketMinute[slot] !== minute || !this.insightCount[slot]) continue
+      count += this.insightCount[slot]
+      sum += this.insightSum[k][slot]
+      min = Math.min(min, this.insightMin[k][slot])
+      max = Math.max(max, this.insightMax[k][slot])
+    }
+    if (!count) return { count: 0 }
+    const last = this.lastInsight ? [this.lastInsight.health, this.lastInsight.rul_h][k] : undefined
+    return { count, min: round(min, 1), max: round(max, 1), avg: round(sum / count, 2), last }
   }
 }
 

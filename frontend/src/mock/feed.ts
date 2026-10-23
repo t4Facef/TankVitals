@@ -9,8 +9,9 @@ import { mockRegistry } from './registry'
  * com os ids do cadastro. Os valores vêm da planta simulada (`plant.ts`), a
  * mesma que responde o histórico, então o gráfico e o "agora" batem.
  *
- * Também manda a previsão da IA a cada 5 passos e um aviso a cada alerta que
- * abre, piora ou fecha, como o backend vai fazer pelo WebSocket.
+ * Também manda cada previsão nova da IA (a planta calcula uma a cada 5 s) e um
+ * aviso a cada alerta que abre, piora ou fecha, como o backend vai fazer pelo
+ * WebSocket.
  *
  * Só publica quem está ativo no cadastro e existe na planta: um dispositivo
  * cadastrado pela tela não tem simulação e fica "sem dados", como ficaria um
@@ -33,6 +34,7 @@ export function startMockFeed(
 ): () => void {
   const plant = getMockPlant()
   let seq = 0
+  let lastInsightT = -1
 
   const send = (device: string, payload: Record<string, unknown>, type: MessageType = 'telemetry') => {
     seq += 1
@@ -51,7 +53,12 @@ export function startMockFeed(
       const payload = plant.payloadOf(device.id)
       if (Object.keys(payload).length) send(device.id, payload)
     }
-    if (plant.t % 5 === 0) send('bomba-rec-01', plant.insight(), 'insight')
+    const insight = plant.lastInsight
+    if (insight && insight.t !== lastInsightT) {
+      lastInsightT = insight.t
+      const { health, rul_h, model_version } = insight
+      send(insight.device, { health, rul_h, model_version }, 'insight')
+    }
   }
 
   onStatus('simulated')

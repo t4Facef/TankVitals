@@ -421,66 +421,6 @@ async function toggleActive(device: Device) {
 </template>
 
 <style scoped>
-.summary {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 14px;
-}
-
-.summary-tile {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 14px 16px;
-  border: var(--bw-strong) solid var(--line);
-  border-radius: var(--radius);
-  color: var(--ink);
-  font: inherit;
-  text-align: left;
-  background: var(--surface);
-  cursor: pointer;
-}
-
-.summary-tile:hover {
-  border-color: var(--accent);
-}
-
-.summary-tile[aria-pressed='true'] {
-  border-color: var(--night);
-  box-shadow: inset 0 0 0 1px var(--night);
-}
-
-.summary-tile span {
-  color: var(--muted);
-  font-size: 0.8125rem;
-  font-weight: var(--fw-bold);
-}
-
-.summary-tile strong {
-  font-size: 1.875rem;
-  font-weight: var(--fw-heavy);
-  line-height: 1.15;
-}
-
-.summary-tile small {
-  color: var(--muted);
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.summary-tile.is-online strong {
-  color: var(--ok-ink);
-}
-
-.summary-tile.is-warn strong {
-  color: var(--atencao-text);
-}
-
-.summary-tile.is-bad strong {
-  color: var(--critico-ink);
-}
-
 .toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -603,10 +543,6 @@ async function toggleActive(device: Device) {
 }
 
 @media (max-width: 900px) {
-  .summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .toolbar .segmented-control {
     max-width: 100%;
     overflow-x: auto;

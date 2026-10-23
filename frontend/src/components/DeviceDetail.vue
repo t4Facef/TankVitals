@@ -6,6 +6,7 @@ import { ITEM_LEVEL_TEXT, type ItemLevel } from '../composables/useItemLevel'
 import { useLiveValues } from '../composables/useLiveValues'
 import { useRecentSeries } from '../composables/useRecentSeries'
 import type { Device } from '../domain/devices'
+import { formatRul } from '../domain/insights'
 import { describeRange, KIND_LABEL } from '../domain/registry'
 import { fieldIcon, KIND_ICON, LEVEL_ICON, UI_ICON } from '../icons'
 import { tankLabel } from '../plant/tanks'
@@ -103,13 +104,18 @@ function toggle() {
             {{ ITEM_LEVEL_TEXT[level] }}
           </span>
           <span class="detail-situation">{{ situation }}</span>
-          <RouterLink
-            v-if="device.active"
-            class="detail-3d"
-            :to="{ name: 'gemeo-3d', query: { tanque: device.zone, item: device.id } }"
-          >
-            Ver no 3D <component :is="UI_ICON.abrir" :size="14" aria-hidden="true" />
-          </RouterLink>
+          <span v-if="device.active" class="detail-links">
+            <RouterLink
+              v-if="device.kind === 'equipment'"
+              class="detail-3d"
+              :to="{ name: 'insights', hash: `#${device.id}` }"
+            >
+              Ver na Insights <component :is="UI_ICON.abrir" :size="14" aria-hidden="true" />
+            </RouterLink>
+            <RouterLink class="detail-3d" :to="{ name: 'gemeo-3d', query: { tanque: device.zone, item: device.id } }">
+              Ver no 3D <component :is="UI_ICON.abrir" :size="14" aria-hidden="true" />
+            </RouterLink>
+          </span>
         </div>
 
         <section v-if="fields.length" class="detail-block">
@@ -150,7 +156,7 @@ function toggle() {
             <strong>{{ format(health.health, 0) }} %</strong>
             <span :class="['table-level', `badge-${health.level}`]">{{ LEVEL_TEXT[health.level] }}</span>
             <p>
-              Vida útil restante: <b>{{ health.rul_h === null ? '—' : `${format(health.rul_h, 0)} h` }}</b>
+              Vida útil restante: <b>{{ health.rul_h === null ? '—' : formatRul(health.rul_h) }}</b>
               <template v-if="health.model"> · modelo {{ health.model }}</template>
             </p>
           </div>
@@ -257,10 +263,16 @@ function toggle() {
   font-weight: 600;
 }
 
+.detail-links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-left: auto;
+}
+
 .detail-3d {
   display: inline-flex;
   align-items: center;
-  margin-left: auto;
   color: var(--accent);
   font-size: 0.875rem;
   font-weight: var(--fw-heavy);

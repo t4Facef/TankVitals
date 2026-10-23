@@ -37,6 +37,9 @@ const props = defineProps<{
   unit: string
   threshold?: MetricThreshold | null
   range: string
+  /** Eixo fixo, para grandezas com escala própria (a saúde vai de 0 a 100 %). */
+  yMin?: number
+  yMax?: number
 }>()
 
 // Lidos do CSS na hora de desenhar, e lidos de novo quando o contraste muda:
@@ -165,6 +168,8 @@ const chartOptions = computed<ChartOptions<'line'>>(() => ({
     },
     y: {
       beginAtZero: false,
+      min: props.yMin,
+      max: props.yMax,
       grid: {
         color: palette.value.grade,
       },

@@ -138,6 +138,13 @@ export async function mockGetHistory(range: HistoryRange, devices?: string[]): P
   return plant.history(range, devices)
 }
 
+export async function mockGetInsightHistory(range: HistoryRange, devices?: string[]): Promise<HistoryResponse> {
+  await wait(150)
+  const plant = getMockPlant()
+  plant.catchUp()
+  return plant.insightHistory(range, devices)
+}
+
 export async function mockGetAlerts(status: 'open' | 'all'): Promise<Alert[]> {
   await wait(100)
   return getMockPlant().alerts(status)

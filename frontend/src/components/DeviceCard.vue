@@ -6,6 +6,7 @@ import { ITEM_LEVEL_TEXT, type ItemLevel } from '../composables/useItemLevel'
 import { useLiveValues } from '../composables/useLiveValues'
 import { useRecentSeries } from '../composables/useRecentSeries'
 import type { Device } from '../domain/devices'
+import { formatRul } from '../domain/insights'
 import { fieldIcon, KIND_ICON, LEVEL_ICON, UI_ICON } from '../icons'
 import Sparkline from './Sparkline.vue'
 
@@ -112,7 +113,7 @@ const levelIcon = computed(() => (props.level === 'vazio' ? UI_ICON.semDado : LE
         <template v-if="health">
           <strong>{{ format(health.health, 0) }} %</strong>
           <span :class="['table-level', `badge-${health.level}`]">{{ LEVEL_TEXT[health.level] }}</span>
-          <small>saúde prevista · vida útil {{ health.rul_h === null ? '—' : `${format(health.rul_h, 0)} h` }}</small>
+          <small>saúde prevista · vida útil {{ health.rul_h === null ? '—' : formatRul(health.rul_h) }}</small>
         </template>
         <small v-else>Aguardando a primeira previsão da IA.</small>
       </span>

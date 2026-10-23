@@ -39,6 +39,11 @@ histórico, os alertas e os comandos; a regra do aerador, a reposição, a
 recirculação e a falha injetada funcionam. Dá para testar o fluxo Web → IoT
 inteiro sem backend.
 
+Ela também faz o papel da IA: a cada 5 s sai uma previsão de saúde e vida útil
+da bomba, que percebe a falha injetada aos poucos, e o alerta da IA abre e
+fecha com a histerese da IA-08 (3 previsões ruins seguidas abrem, 10 boas
+fecham). Não é modelo nenhum, é só o formato certo para as telas.
+
 O que se cadastra pela tela (dispositivos, regras) e o log da auditoria ficam
 no `sessionStorage` da aba: recarregar a página mantém, fechar a aba volta ao
 início.
@@ -73,6 +78,11 @@ Quando o backend tiver as rotas do contrato abaixo, ponha `VITE_MOCK=false` no
 | `src/views/AuditView.vue` | a Auditoria (WEB-04), só admin: agrupada por dia, filtro por tipo e usuário, paginada |
 | `src/views/ToolsView.vue` | as Ferramentas (WEB-04): links do InfluxDB, RabbitMQ, pgAdmin e da documentação da API |
 | `src/mock/audit.ts` | a auditoria do modo simulado: 3 dias inventados e o que a pessoa faz no navegador |
+| `src/views/InsightsView.vue` | a Insights (IA-09): resumo e um bloco por equipamento |
+| `src/components/EquipmentInsight.vue` | o bloco de um equipamento: semáforo, tendência da saúde e da vida útil, sinais e alertas |
+| `src/components/HealthLight.vue` | o semáforo da saúde prevista |
+| `src/domain/insights.ts` | as faixas da saúde e da vida útil e o que cada alerta significa e pede para fazer |
+| `src/api/insights.ts` | o histórico das previsões (`GET /api/insights/history`) |
 
 **Para fazer uma tela:** crie a view em `src/views/` e aponte o `component` dela
 em `src/router/pages.ts`. Enquanto ela não existe, a rota mostra um placeholder
@@ -135,33 +145,22 @@ npm run preview
 
 ## Contrato com o backend
 
-O frontend não conversa com MQTT, RabbitMQ ou InfluxDB: só com a API. Os
-formatos estão em `src/domain/devices.ts` e o modo simulado
-(`src/mock/registry.ts` e `src/mock/plant.ts`) responde exatamente assim.
+O frontend não conversa com MQTT, RabbitMQ ou InfluxDB: só com a API. As rotas,
+o login, o WebSocket e o envelope das mensagens estão no
+[`docs/ARQUITETURA.md`](../docs/ARQUITETURA.md), da §12 à §17 (a tabela de rotas
+é a §17.3). Os tipos ficam em `src/domain/` e `src/live/envelope.ts`, e o modo
+simulado (`src/mock/`) responde exatamente naqueles formatos. Mudou uma rota?
+Muda lá primeiro.
 
-| Rota | O que o front espera | Tarefa |
-| --- | --- | --- |
-| `POST /api/auth/login` | formulário `username` e `password`; devolve `{access_token, token_type}` | BACK-03 |
-| `POST /api/ws/ticket` | `{ticket}`, de uso único | BACK-04 |
-| `WS /ws/live?ticket=...` | um envelope `{id, ts, type, device, payload}` por mensagem: `telemetry`, `insight`, `alert`... | BACK-04 |
-| `GET /api/devices` | `[{id, name, kind, zone, active, fields, state_field, commands, control}]`; cada campo com `key, label, short, unit, decimals, range`. Vêm também os desativados (`active: false`) | BACK-05 |
-| `POST /api/devices` | (admin) corpo `{id, name, kind, zone, active, fields}`; a API completa `state_field`, `commands` e `control` pelo tipo e devolve o dispositivo. 409 para id repetido, 422 para faixa inválida | BACK-06 |
-| `PUT /api/devices/{id}` | (admin) corpo `{name, zone, active, fields}`; o id e o tipo não mudam. Devolve o dispositivo | BACK-06 |
-| `GET /api/rules` | `[{id, name, device, field, actuator, on_below, off_at, updated_at, updated_by}]` | BACK-06 |
-| `PUT /api/rules/{id}` | (admin) corpo `{on_below, off_at}`, com `off_at > on_below`; devolve a regra | BACK-06 |
-| `GET /api/history?range=6h` | `{range, from, to, step_s, series}`; cada série com `device, field, points` (uns 360 pontos) e `stats` (`count, min, max, avg, last, out_of_range_s`; nos campos de estado, `on_s` e `turn_ons`). `&device=od-01` filtra | BACK-05 |
-| `GET /api/alerts?status=all` | `[{id, device, field, level, message, value, opened_at, closed_at}]`, os mais novos primeiro | BACK-05 |
-| `GET /api/audit?page=1&page_size=25` | (admin) `{items, total, page, page_size}`, os mais novos primeiro; cada item `{id, ts, user, type, action, target, detail, ok}`. `&type=login` e `&user=admin` filtram. Tipos: `login`, `command`, `registry`, `job`, `assistant`; as ações conhecidas estão em `src/domain/audit.ts` | BACK-06 |
-| `POST /api/devices/{id}/command` | corpo `{command: "on", value: true}` (ou `inject_fault` e `repair`); devolve `{id, status: "sent"}`. O estado novo chega pela telemetria | IOT-04 |
+O que é só do front:
 
-Nas rotas de admin, o modo simulado responde 403 para os outros papéis, como a
-API vai responder: esconder o botão na tela é conforto, quem barra é a API. As
-regras de validação do cadastro ficam em `src/domain/registry.ts`, e a mensagem
-de erro que a tela mostra é o `detail` da resposta.
-
-As estatísticas do histórico são calculadas sobre as leituras cruas, não sobre
-os pontos agregados: é delas que saem o "tempo fora da faixa" e o "quantas
-vezes o aerador ligou" do dashboard.
+- Nas rotas de admin, o modo simulado responde 403 para os outros papéis, como
+  a API vai responder: esconder o botão na tela é conforto, quem barra é a API.
+- As regras de validação do cadastro ficam em `src/domain/registry.ts`, e a
+  mensagem de erro que a tela mostra é o `detail` da resposta.
+- As estatísticas do histórico são calculadas sobre as leituras cruas, não
+  sobre os pontos agregados: é delas que saem o "tempo fora da faixa" e o
+  "quantas vezes o aerador ligou" do dashboard.
 
 ## Gêmeo 3D (WEB-05 a WEB-08)
 
@@ -249,6 +248,30 @@ sem dados). O resumo do topo também filtra, e cada tanque tem o link para vê-l
 no 3D. Clicar num cartão abre o detalhe pela direita, onde o admin edita e
 desativa. No cadastro, o id é sugerido pela convenção dos prefixos e a zona
 lista as que já existem: uma zona nova cria outro tanque.
+
+## Insights (IA-09)
+
+Um bloco por equipamento do cadastro (hoje só a bomba de recirculação), com:
+
+- o **semáforo** e os números da última previsão: saúde em %, vida útil em
+  horas ("168 h ou mais" no teto) e uma frase do que fazer. Previsão com mais
+  de 60 s apaga o semáforo, como no 3D;
+- a **tendência** da saúde e da vida útil no período (1 h, 6 h, 24 h ou 7 dias),
+  com as faixas de 70 % e 24 h desenhadas;
+- os **sinais nas leituras**: as quatro variáveis com mini gráfico e, para cada
+  uma fora da faixa, o que costuma ser e o que conferir, pelos modos de falha
+  da IA-01. É uma pista da faixa, não do modelo, e a tela diz isso;
+- os **alertas** abertos do equipamento, da IA e das faixas, cada um com o que
+  significa e o que fazer, e os fechados recentes.
+
+A previsão é a mesma do store que pinta a bomba no 3D, então as duas telas
+mudam juntas. O painel da bomba no 3D e o detalhe em Dispositivos têm o link
+"Ver na Insights", que abre a página já no bloco do equipamento
+(`/insights#bomba-rec-01`).
+
+**Para ver na apresentação:** no 3D, abra a bomba, injete a falha e vá para a
+Insights. Em uns 2,5 min o semáforo passa a amarelo, em uns 3 min a vermelho e
+o alerta da IA abre; reparar fecha o alerta em menos de 1 min.
 
 ## Página Ferramentas
 
