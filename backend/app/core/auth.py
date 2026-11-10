@@ -8,6 +8,14 @@ from sqlalchemy import select, update
 from app.ai_api import current_user
 from app.core.catalog import users, log, now
 
+def token_ttl():
+    """Validade do login; 2 h por padrão, para não vencer no meio de uma demonstração."""
+    try:
+        minutes = int(os.environ.get('JWT_TTL_MINUTES', '120'))
+    except ValueError:
+        minutes = 120
+    return timedelta(minutes=max(1, minutes))
+
 def require_role(role):
     ranks = {'viewer': 0, 'operator': 1, 'admin': 2}
     def dependency(user=Depends(current_user)):
@@ -43,5 +51,5 @@ def authenticate(engine, username, password):
             log(conn, username, 'login', 'login' if valid else 'login_failed', ok=valid)
             if valid:
                 return {'access_token': jwt.encode({'sub': username, 'role': row['role'], 'iat': stamp,
-                        'exp': stamp + timedelta(minutes=30)}, secret, algorithm='HS256'), 'token_type':'bearer'}
+                        'exp': stamp + token_ttl()}, secret, algorithm='HS256'), 'token_type':'bearer'}
     raise HTTPException(status, 'Muitas tentativas' if status == 429 else 'Usuário ou senha inválidos')

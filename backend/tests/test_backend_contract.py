@@ -150,3 +150,13 @@ def test_api_docs_open_under_api_without_login(registry):
     spec = registry.client.get('/api/openapi.json')
     assert spec.status_code == 200 and '/api/devices' in spec.json()['paths']
     assert registry.client.get('/api/devices').status_code == 401
+
+def test_login_lasts_two_hours_by_default_and_follows_the_env(registry, monkeypatch):
+    import jwt
+    def lifetime():
+        token = registry.client.post('/api/auth/login', json={'username':'viewer','password':'demo-viewer'}).json()['access_token']
+        claims = jwt.decode(token, options={'verify_signature': False})
+        return claims['exp'] - claims['iat']
+    assert lifetime() == 2 * 3600
+    monkeypatch.setenv('JWT_TTL_MINUTES', '45')
+    assert lifetime() == 45 * 60
