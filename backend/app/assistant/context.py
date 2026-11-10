@@ -34,9 +34,12 @@ class ContextRepository:
         self.influx, self.db, self.ai_store = influx, db, ai_store
 
     def readings(self, measurement):
-        # last por dispositivo/campo, incluindo versões diferentes do modelo.
+        # last por dispositivo/campo, incluindo versões diferentes do modelo. O
+        # toFloat deixa o estado (on/running) como 1/0: o group() final junta
+        # todas as tabelas, e o Flux recusa misturar booleano com número.
         query = '''from(bucket: bucket) |> range(start: -24h)
           |> filter(fn: (r) => r._measurement == "%s")
+          |> toFloat()
           |> group(columns: ["device", "_field"])
           |> last() |> group() |> sort(columns: ["device", "_field"])
           |> limit(n: 300)''' % measurement
