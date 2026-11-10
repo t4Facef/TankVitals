@@ -99,9 +99,9 @@ def test_history_stats_thresholds_tanks_and_cors(service):
     assert service.client.get("/api/tanks").json()[0]["online"] is False
     response = service.client.get("/api/thresholds", headers={"Origin": "http://localhost:5173"})
     assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
-    assert service.client.get("/docs").status_code == 200
+    assert service.client.get("/api/docs").status_code == 200
     assert {"/api/health", "/api/thresholds", "/api/tanks", "/api/readings/latest",
-            "/api/readings/history", "/api/stats"} <= service.client.get("/openapi.json").json()["paths"].keys()
+            "/api/readings/history", "/api/stats"} <= service.client.get("/api/openapi.json").json()["paths"].keys()
 
 
 @pytest.mark.parametrize("path,method", [
