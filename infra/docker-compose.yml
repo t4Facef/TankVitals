@@ -1,4 +1,5 @@
-﻿# TankVitals integrated second-bimester stack. Generate ignored local credentials first.
+﻿# TankVitals: a pilha inteira do 2º bimestre. Suba pela raiz: `docker compose up`
+# (o compose.yaml da raiz inclui este). Antes, gere os segredos: python scripts/gerar_segredos.py
 services:
   ollama:
     image: ollama/ollama:0.11.4
@@ -182,14 +183,19 @@ services:
       AI_DATA_DIR: /var/lib/tankvitals/ai
       MESSAGING_DB_PATH: /var/lib/tankvitals/messaging.sqlite
       CORS_ORIGINS: http://localhost:8080
+      # Mesma velocidade do simulador: converte leituras em segundos no histórico.
+      SIM_SPEED: ${SIM_SPEED:-60}
       OLLAMA_URL: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
     volumes:
       - influx_tokens:/run/plat:ro
       - app_data:/var/lib/tankvitals
     depends_on:
-      ollama-init:
-        condition: service_completed_successfully
+      # Só o Ollama no ar, não o modelo baixado: se o download falhar (sem
+      # internet, pouca memória), o resto do sistema sobe e a tela do
+      # assistente mostra "carregando o modelo" até ele ficar pronto.
+      ollama:
+        condition: service_healthy
       influxdb:
         condition: service_healthy
       rabbitmq:
@@ -374,10 +380,20 @@ services:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:?Missing pgAdmin email}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:?Missing pgAdmin password}
       PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
       PGADMIN_CONFIG_ALLOW_SPECIAL_EMAIL_DOMAINS: "['local']"
+    volumes:
+      # O PostgreSQL do compose já registrado; a senha é a POSTGRES_PASSWORD do .env.
+      - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:80/misc/ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
 
   frontend:
     build:
