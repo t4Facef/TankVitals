@@ -13,9 +13,9 @@ COPY . .
 # Vazio: o front usa caminho relativo (/api, /ws) e quem encaminha para o
 # backend é o Nginx da etapa 2.
 ENV VITE_API_BASE_URL=""
-# Modo simulado (src/config.ts): ligado até o backend ter o login (BACK-03) e
-# o WebSocket com ticket (BACK-04). Para desligar: --build-arg VITE_MOCK=false.
-ARG VITE_MOCK=true
+# Modo simulado (src/config.ts): desligado, o front fala com a API de verdade.
+# Para ver as telas sem o backend: --build-arg VITE_MOCK=true.
+ARG VITE_MOCK=false
 ENV VITE_MOCK=$VITE_MOCK
 RUN npm run build
 
