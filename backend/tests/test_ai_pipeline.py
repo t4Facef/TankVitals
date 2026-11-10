@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -13,7 +14,7 @@ from app.ai_api import router
 from app.ai_jobs import JobRunner
 from app.ai_store import AIStore
 from app.ai_transport import envelope
-from app.inference import InferenceService
+from app.inference import InferenceService, insight_id
 from app.core.physics import PUMP_FIELDS, advance_block, advance_population, create_population, inject_fault
 from app.core.datagen import _labels
 
@@ -110,7 +111,9 @@ def test_inference_recovers_alert_state_and_pending_events(store, tmp_path):
         bus.fail = False
         recovered = InferenceService(store, bus, tmp_path)
         await recovered.handle(message)
-        assert len([event for event in bus.events if event[2]["id"] == message["id"] + "-insight"]) == 1
+        assert len([event for event in bus.events if event[2]["id"] == insight_id(message["id"])]) == 1
+        # O writer só grava envelope com UUID: um id fora disso mandaria toda previsão para a DLQ.
+        uuid.UUID(insight_id(message["id"]))
         recovered.engine._models = {"health_true": Constant(90), "rul_h_true": Constant(168)}
         for index in range(33, 43):
             await recovered.handle(reading(index))
@@ -132,3 +135,17 @@ def test_rul_matches_actual_nonlinear_failure_and_block_matches_single_steps():
     rows = [advance_population(second, noise_scale=0) for _ in range(60)]
     for field in PUMP_FIELDS:
         np.testing.assert_allclose(block[field], np.concatenate([row[field] for row in rows]), atol=1e-10)
+
+
+def test_writer_accepts_the_insight_envelope_built_by_inference():
+    import json
+    from app.ai_transport import envelope as make_envelope
+    from app.writer import to_influx_record
+
+    reading_id = str(uuid.uuid4())
+    insight = make_envelope("insight", "bomba-rec-01", {"health": 91.5, "rul_h": 168.0, "model_version": "v-1"},
+                            message_id=insight_id(reading_id), ts="2026-11-16T12:00:00.000Z")
+    record = to_influx_record(json.dumps(insight).encode(), "insight.bomba-rec-01")
+    assert record["measurement"] == "insight"
+    assert record["fields"] == {"health": 91.5, "rul_h": 168.0}
+    assert insight_id(reading_id) == insight_id(reading_id)

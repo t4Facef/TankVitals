@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import uuid
 from collections import deque
 from dataclasses import asdict
 from datetime import datetime
@@ -13,6 +14,15 @@ from app.ai_store import AIStore
 from app.ai_transport import RabbitBus, envelope
 from app.core.alert_hysteresis import AlertState, update_alert_state
 from app.core.inference import InferenceEngine
+
+
+def insight_id(message_id: str) -> str:
+    """Id da previsão de uma leitura: um UUID, porque o writer só grava envelopes com UUID.
+
+    É determinístico: a mesma leitura reentregue gera a mesma previsão, e o
+    writer descarta a repetida pela deduplicação.
+    """
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"tankvitals:insight:{message_id}"))
 
 
 class InferenceService:
@@ -75,7 +85,7 @@ class InferenceService:
         if prediction:
             payload = {key: value for key, value in prediction.items() if key != "device"}
             pending.append(("tv.insights", f"insight.{device}", envelope("insight", device, payload,
-                           message_id=message["id"] + "-insight", ts=message["ts"])))
+                           message_id=insight_id(message["id"]), ts=message["ts"])))
             alert_state, transition = update_alert_state(AlertState(**state["alert_state"]),
                                                          prediction["health"], prediction["rul_h"])
             state["alert_state"] = asdict(alert_state)
