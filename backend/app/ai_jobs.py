@@ -1,12 +1,16 @@
 """Execução testável dos jobs, sem bloquear o event loop do RabbitMQ."""
 import asyncio
 import json
+import logging
 from pathlib import Path
 
 from app.ai_store import now
 from app.ai_transport import envelope
 from app.core.datagen import DatasetConfig, generate_dataset
 from app.core.training import TrainingConfig, train_models
+
+
+logger = logging.getLogger(__name__)
 
 
 class JobRunner:
@@ -45,7 +49,12 @@ class JobRunner:
                                "params": job["params"], "path": str(path), "bytes": path.stat().st_size}
                     await asyncio.to_thread(self.store.put, "dataset", dataset, job_id + "-dataset")
                     if self.sample_writer:
-                        await asyncio.to_thread(self.sample_writer, path, job_id)
+                        # A amostra no bucket `lab` é um extra para explorar no InfluxDB: se
+                        # falhar, o dataset já está pronto para o treino e o job não cai.
+                        try:
+                            await asyncio.to_thread(self.sample_writer, path, job_id)
+                        except Exception:
+                            logger.warning("Amostra do dataset %s não foi gravada no InfluxDB", job_id, exc_info=True)
                     job["result"] = {"dataset_id": job_id + "-dataset"}
                 elif job["kind"] == "train":
                     params = dict(job["params"])

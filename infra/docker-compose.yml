@@ -323,6 +323,9 @@ services:
       RABBITMQ_URL: amqp://${RABBITMQ_WORKER_USERNAME:?Missing RabbitMQ worker user}:${RABBITMQ_WORKER_PASSWORD:?Missing RabbitMQ worker password}@rabbitmq:5672/%2F
       AI_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?Missing Postgres user}:${POSTGRES_PASSWORD:?Missing Postgres password}@postgres:5432/${POSTGRES_DB:?Missing Postgres database}
       AI_DATA_DIR: /var/lib/tankvitals/ai
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_ORG: unifacef
+      INFLUX_BUCKET: tankvitals
       INFLUX_TOKEN_FILE: /run/plat/secrets/influx_api.token
     volumes:
       - influx_tokens:/run/plat:ro

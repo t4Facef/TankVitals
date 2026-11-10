@@ -86,6 +86,17 @@ def test_worker_generates_off_event_loop_and_is_idempotent(store, tmp_path):
     assert bus.events[-1][2]["payload"]["status"] == "done"
 
 
+def test_dataset_job_finishes_even_if_the_lab_sample_fails(store, tmp_path):
+    job = store.create_job("datagen", {"num_pumps": 2, "days": 1}, "admin")
+
+    def broken_sample(path, job_id):
+        raise ConnectionError("InfluxDB fora do ar")
+
+    asyncio.run(JobRunner(store, Bus(), tmp_path, broken_sample).run(job["id"]))
+    assert store.get(job["id"])["status"] == "done"
+    assert len(store.list("dataset")) == 1
+
+
 def test_inference_recovers_alert_state_and_pending_events(store, tmp_path):
     bus = Bus()
     version = "v-" + str(uuid4())
