@@ -37,7 +37,7 @@ Senhas: `DEMO_VIEWER_PASSWORD`, `DEMO_OPERATOR_PASSWORD` e `DEMO_ADMIN_PASSWORD`
 
 | Tela | Como usar |
 | --- | --- |
-| **Dashboard** | Leituras ao vivo por dispositivo, em cores pela faixa. Escolha o período (1 h, 6 h, 24 h, 7 d) para o gráfico e os indicadores: mínimo, máximo, média, tempo fora da faixa e, nos atuadores, tempo ligado e quantas vezes ligou. O `operator` liga a reposição de água pelo botão, com confirmação. |
+| **Dashboard** | Leituras ao vivo por dispositivo, em cores pela faixa. Escolha o período (1 h, 6 h, 24 h, 7 d) para o gráfico e os indicadores: mínimo, máximo, média, tempo fora da faixa e, nos atuadores, tempo ligado e quantas vezes ligou. O `operator` liga a reposição de água pelo botão; a tela espera o dispositivo confirmar a mudança. |
 | **Gêmeo 3D** | Tanque e bomba em 3D, nas cores da faixa. O `operator` escolhe um modo de falha (rolamento, entupimento, superaquecimento, desbalanceamento) e injeta; **Reparar** devolve a bomba a nova. Sem dados por alguns segundos, a cena avisa. |
 | **Dispositivos** | Lista do cadastro. O `admin` cria dispositivos, variáveis e faixas (normal e crítica) e edita a regra do aerador. As outras telas se ajustam sozinhas. |
 | **Laboratório** | O `admin` configura a geração (equipamentos, dias simulados, % que falha e modos de falha, ruído, leituras faltantes, outliers e semente), dispara a base sintética (1.008.000 leituras no padrão) e acompanha o progresso. |
@@ -95,7 +95,7 @@ Toda mensagem ao vivo usa o mesmo **envelope** no MQTT, no RabbitMQ e no WebSock
 
 ### 2.2 PLAT — Plataforma e mensageria
 
-- **Compose:** `compose.yaml` na raiz inclui `infra/docker-compose.yml`. 16 serviços contínuos mais 3 de inicialização (`token-bootstrap`, `migrate`, `ollama-init`), todos com healthcheck ou condição de término.
+- **Compose:** `compose.yaml` na raiz inclui `infra/docker-compose.yml`. 14 serviços contínuos mais 3 de inicialização (`token-bootstrap`, `migrate`, `ollama-init`), todos com healthcheck ou condição de término.
 - **Segredos (PLAT-02):** `scripts/gerar_segredos.py` gera senhas aleatórias, o `.env` e o `secrets/definitions.json` do RabbitMQ (senhas já em hash). Nada disso vai para o Git.
 - **Mosquitto (PLAT-04):** usuário e senha por cliente e ACL: o simulador publica telemetria e lê comandos; o gateway faz o inverso.
 - **RabbitMQ (PLAT-05):** topologia declarada uma vez no `definitions.json`; nenhum serviço declara fila. Exchanges `tv.telemetry`, `tv.commands`, `tv.insights`, `tv.events`, `tv.jobs` e `tv.dlx`; uma fila por consumidor; `tv.writer.retry` com espera antes da `q.dlq`.

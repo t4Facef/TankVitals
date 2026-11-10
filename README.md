@@ -26,7 +26,7 @@ de ela falhar.
 | Água do tanque | temperatura, pH, nível, turbidez, oxigênio dissolvido, luminosidade | dashboard ao vivo, histórico e alerta fora da faixa |
 | Bomba de recirculação | vibração, corrente, temperatura do motor, vazão | a IA estima a saúde e a vida útil restante |
 | Aerador | ligado ou desligado | liga sozinho quando o oxigênio cai abaixo de 5 mg/L e desliga em 6,5 |
-| Reposição de água | ligada ou desligada | ligada pelo botão na Web, com confirmação |
+| Reposição de água | ligada ou desligada | ligada pelo botão na Web; a tela espera o dispositivo confirmar |
 
 As faixas de cada variável ficam no cadastro do PostgreSQL e podem ser
 editadas pela tela **Dispositivos**.
