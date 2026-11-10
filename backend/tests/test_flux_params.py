@@ -5,7 +5,7 @@ from app import flux
 
 
 def test_text_is_escaped_including_flux_interpolation():
-    assert flux.literal('a"b\c${x}\n') == '"a\\"b\\c\${x}\n"'
+    assert flux.literal('a"b\\c${x}\n') == r'"a\"b\\c\${x}\n"'
 
 
 def test_bind_builds_a_params_record_with_lists_and_numbers():
