@@ -1,230 +1,116 @@
-# Roteiro da apresentação — TankVitals
+# Roteiro da apresentação — 2º bimestre
 
-Tarefa ENT-04. Conta a história na ordem em que a rubrica é avaliada, para
-nenhum ponto ficar sem ser demonstrado.
+Apresentação presencial em **16/11/2026**. O enunciado dispensa slides: o que vale é o sistema funcionando. Os slides ("TankVitals — Apresentação 2º bimestre") servem só para uma abertura de 2 minutos (problema e arquitetura) e podem ser pulados.
 
-**Duração: 8 a 10 min.** A regra da rubrica que manda em tudo: *incluir a
-tecnologia no código sem demonstrar funcionamento não pontua*. Então cada bloco
-abaixo termina com algo **acontecendo na tela**.
+A regra da rubrica que manda em tudo: **tecnologia no código sem demonstração não pontua.**
 
----
+### A ordem é a do enunciado
 
-## Antes de começar (15 min de folga)
+O professor pede os 12 passos **nesta ordem**. Cada passo é conduzido por quem fez a parte; as seções abaixo, por pessoa, dizem o que fazer e falar em cada passo.
 
-Suba tudo e deixe aberto. O passo a passo completo está em
-[COMO-FUNCIONA.md](COMO-FUNCIONA.md#3-como-rodar-do-zero).
+> A divisão segue as frentes e os commits. Confirmem quem fica com a frente IOT antes do ensaio.
 
-- [ ] Docker Desktop aberto, `docker compose ps` com os dois no ar
-- [ ] Backend rodando, log visível numa janela
-- [ ] Dashboard em <http://localhost:5173>
-- [ ] Wokwi aberto e **em foco** — a simulação fica bem mais lenta em aba de
-      segundo plano
-- [ ] `mosquitto_sub` já rodando num terminal (comando abaixo)
-- [ ] Data Explorer do InfluxDB aberto em <http://localhost:8086>
-- [ ] `/docs` da API aberto em outra aba
-- [ ] Simulador pronto para colar, caso o Wokwi falhe
-
-**Abas do navegador, na ordem de uso:** Wokwi · dashboard · InfluxDB · `/docs`
-
-**Deixe estes dois comandos colados e prontos:**
-
-```bash
-# terminal do MQTT (deixe rodando desde o início)
-docker exec tankvitals-mosquitto \
-  mosquitto_sub -h localhost -t 'tankvitals-unifacef-g3/#' -v
-
-# plano de emergência, se o Wokwi travar
-cd backend && .venv\Scripts\python.exe tools/fake_device.py --interval 5
-```
-
-> **O relógio do Wokwi engana.** A simulação roda de 3 a 7 vezes mais devagar
-> que o tempo real: 5 s de dispositivo levam de 15 a 35 s de relógio. Não
-> espere o dashboard piscar a cada 5 segundos na frente da turma — e **não
-> fique em silêncio esperando**. Fale enquanto o dado vem.
-
----
-
-## O roteiro
-
-Preencha quem fala cada parte antes de ensaiar.
-
-| Tempo | Bloco | Quem fala |
+| Passo do enunciado | Quem conduz | Critério |
 | --- | --- | --- |
-| 0–1 | O problema | |
-| 1–2 | Arquitetura | |
-| 2–4 | Dispositivo no Wokwi | |
-| 4–5 | MQTT e a bridge | |
-| 5–6 | Backend e persistência | |
-| 6–8 | Dashboard | |
-| 8–9 | Alerta ao vivo | |
-| 9–10 | 2º bimestre | |
+| 0. Abertura: problema e arquitetura (slides, opcional) | Luciano | 1 |
+| 1. `docker compose up`, containers saudáveis | Pedro | 10 |
+| 2. Login e os três papéis | João Pedro | 1 (segurança) |
+| 3. Simulador e mensagens no Mosquitto | Igor | 2 |
+| 4. FastAPI e a documentação da API | João Pedro | 5 |
+| 5. Mensageria: filas, consumidores e consumidor parado | Pedro | 4 |
+| 6. InfluxDB e PostgreSQL, histórico | João Pedro | 5 |
+| 7. Dashboard ao vivo, gráficos e indicadores | Luciano | 6 |
+| 8. Aerador pela regra e reposição pelo botão | Igor | 3 |
+| 9. Laboratório gerando os dados | Eduardo | 8 |
+| 10. Treino e métricas | Eduardo | 8 |
+| 11. Falha injetada: Insights e cena 3D | Eduardo e Luciano | 9 e 7 |
+| 12. Assistente respondendo sobre a falha | João Pedro | 9 |
+
+**Atenção ao tempo:** a geração (9) e o treino (10) demoram. Disparem a geração logo depois do passo 1, deixem rodando e voltem a ela no passo 9. No passo 11, a falha leva alguns minutos para derrubar a saúde: injetem no começo do passo 10.
 
 ---
 
-### 0–1 min · O problema — *1,0 pt*
+## Antes de começar (30 min antes)
 
-Sem tela ainda, ou com o README aberto.
-
-> "Tanque de criação vive numa faixa estreita: temperatura entre 24 e 28 graus,
-> pH entre 6,5 e 8. Fora disso o prejuízo é rápido — a amônia fica tóxica e dá
-> mortandade em horas. Hoje o controle é manual: alguém mede duas vezes por dia
-> e anota num caderno. O problema não é medir. É não ver o que acontece entre
-> as medições, e não ter histórico pra descobrir a causa depois."
-
-Feche com a proposta em uma frase: **medir a cada 5 segundos, mostrar, guardar
-e avisar.**
-
-### 1–2 min · Arquitetura — *contextualiza tudo*
-
-Mostre o diagrama do README e ande por ele com o dedo:
-
-> "ESP32 publica em MQTT · Mosquitto transporta · Python valida e grava ·
-> InfluxDB guarda a série · FastAPI serve · Vue mostra."
-
-Uma frase por caixa, sem se aprofundar — o aprofundamento vem nos blocos
-seguintes. Se perguntarem por que dois brokers, a resposta está no bloco de
-4–5 min.
-
-### 2–4 min · O dispositivo — *1,5 pt*
-
-No Wokwi:
-
-1. **Mostre o circuito** e nomeie os quatro sensores. Aponte os dois resistores
-   e explique que têm funções diferentes: 4,7 kΩ é o *pull-up* do DS18B20, 220 Ω
-   limita a corrente do LED.
-2. **Mostre o monitor serial** com as linhas `[pub] {...}` saindo.
-3. **Mexa num sensor ao vivo** — arraste o potenciômetro — e mostre o pH
-   acompanhando no serial.
-
-Se sobrar respiro, diga a frase que mostra domínio:
-
-> "Os sensores analógicos estão no GPIO 34 e 35 porque o ESP32 tem dois
-> conversores e o ADC2 é usado pelo rádio Wi-Fi — ler ADC2 com Wi-Fi ligado
-> devolve lixo."
-
-### 4–5 min · MQTT e Mosquitto — *2,0 pts*
-
-Vá para o terminal do `mosquitto_sub`, que já está recebendo.
-
-> "Essas mensagens estão chegando no nosso Mosquitto local. Mas o ESP32 do
-> Wokwi roda na nuvem e não alcança o localhost de ninguém. Então ele publica
-> num broker público, e o nosso Mosquitto **importa o tópico por bridge**. O
-> backend só conversa com o broker local."
-
-Mostre o bloco `connection wokwi-bridge` no `mosquitto.conf`. E explique o
-prefixo:
-
-> "O broker público é aberto, qualquer um publica. Por isso o prefixo é único do
-> grupo: `tankvitals-unifacef-g3`."
-
-Se quiser um extra forte, mostre o campo `seq` no JSON:
-
-> "Esse contador serve pra detectar perda de mensagem. Medimos 60 segundos e
-> não houve lacuna — 0 % de perda, mesmo passando por um broker público."
-
-### 5–6 min · Backend e persistência — *1,0 + 1,5 pts*
-
-Duas telas, em sequência:
-
-1. **Log do backend**, com uma linha por leitura:
-   `Leitura gravada: tank_id=tanque-01 temp=26.4 ph=7.2 ... alerta=ok`
-2. **Data Explorer do InfluxDB**: measurement `water_reading`, com as tags e os
-   fields. Mostre que `tank_id` é *tag* e as grandezas são *fields*.
-
-> "As tags são indexadas, servem pra agrupar. Valor numérico contínuo como tag
-> explodiria a cardinalidade do banco. É essa escolha que deixa a gente
-> adicionar mais tanques depois sem migrar nada."
-
-Se der tempo, abra o `/docs` e execute um endpoint ao vivo. É o jeito mais rápido
-de provar que a API existe e funciona.
-
-### 6–8 min · Dashboard — *2,0 + 1,0 pt*
-
-No painel:
-
-1. **Os 4 cards**, com valor, cor e rótulo.
-2. **O gráfico**, apontando a faixa segura tracejada.
-3. **Troque o período** (1h → 6h → 24h) e mostre recarregando.
-4. **O painel de análise**: mín/média/máx das quatro de uma vez, quanto do
-   período cada uma ficou fora da faixa, e a tendência de cada uma.
-
-> "Os limites das faixas vêm do backend, por um endpoint, o `/api/thresholds`.
-> O painel não decide faixa nenhuma: ele mostra o que o backend define, então
-> backend e painel nunca discordam."
-
-E sobre o tempo real:
-
-> "O backend empurra cada leitura por WebSocket assim que ela chega do MQTT —
-> medimos 78 milissegundos. Se o WebSocket cair, o painel passa a consultar
-> sozinho a cada 5 segundos e tenta reconectar."
-
-### 8–9 min · O alerta ao vivo — *amarra tudo*
-
-**Este é o momento que vale a apresentação.** É onde a corrente inteira aparece
-reagindo junto.
-
-Gire o potenciômetro do Wokwi até o pH sair da faixa e narre a reação, na ordem:
-
-1. o **LED vermelho** do circuito acende;
-2. o JSON sai no serial com o novo pH;
-3. a mensagem aparece no `mosquitto_sub`;
-4. o log do backend mostra `alerta=critico`;
-5. o **card do pH** fica vermelho e muda o rótulo;
-6. o **painel de análise** passa a contar o tempo fora da faixa.
-
-> "Um sensor mudou de valor, e a informação atravessou seis tecnologias até
-> virar um alerta na tela."
-
-Depois volte o potenciômetro para 7 e mostre tudo normalizando.
-
-### 9–10 min · Continuidade — *fecha*
-
-O gancho de atuação remota **já funciona** — vale demonstrar se sobrar tempo:
-
-```bash
-docker exec tankvitals-mosquitto mosquitto_pub \
-  -h test.mosquitto.org -t 'tankvitals-unifacef-g3/tanque-01/cmd' \
-  -m '{"interval_s":2}'
-```
-
-O dispositivo passa a publicar a cada 2 segundos, sem recompilar. Foi testado.
-
-> "Esse mesmo caminho, no 2º bimestre, aciona aerador e bomba. O `tank_id` já é
-> tag no banco, então mais tanques entram sem migração. E o WebSocket já empurra
-> evento, então falta só escolher o canal do alarme."
+- [ ] `docker compose up -d` na raiz e `docker compose ps` com tudo `healthy`. **Nunca** `down -v`.
+- [ ] Modelo do Ollama já baixado (o `ollama-init` terminou).
+- [ ] Senhas `DEMO_*` do `.env` anotadas para os três usuários.
+- [ ] Abas abertas, nesta ordem: aplicação (8080), `/api/docs`, RabbitMQ (15672), InfluxDB (8086), pgAdmin (5050).
+- [ ] Um terminal na raiz do projeto, com fonte grande.
+- [ ] Se o treino for demorado, Eduardo dispara o Laboratório logo no começo.
+- [ ] Alto contraste ligado no menu do usuário, se o projetor estiver lavado.
 
 ---
 
-## Se algo quebrar na hora
+## 1. Luciano — abertura, problema e arquitetura
 
-Ensaie estas três, porque as três já aconteceram de verdade.
+**Slides:** capa, problema, arquitetura e os três fluxos.
 
-| Sintoma | Causa provável | O que fazer na hora |
-| --- | --- | --- |
-| **Dashboard parou de atualizar, mas o Wokwi está rodando** | a simulação do Wokwi atingiu o limite de tempo da sessão | aperte play de novo; o status vira `offline` sozinho pelo Last Will, e isso é bom material de explicação |
-| **Nada chega no `mosquitto_sub`** | a bridge caiu (o broker público é de terceiro) | `docker compose restart mosquitto`, espere ~15 s; se não voltar, use o simulador |
-| **Painel diz "Sem sinal" mas os cards atualizam** | status retido velho no broker local | `docker compose restart mosquitto` — a bridge reassina e puxa o status certo |
-| **Wokwi não compila** | projeto criado como ESP-IDF em vez de Arduino | não dá pra resolver na hora; use o simulador |
+- Apresentar o grupo e dizer que cada um mostra a frente que construiu, com o sistema rodando.
+- **Problema:** o 1º bimestre media temperatura, pH, nível e turbidez. Agora entram oxigênio, luz, a bomba de recirculação vigiada pela IA, o aerador automático e a reposição pelo botão.
+- **Arquitetura:** andar pelo desenho da esquerda para a direita. O simulador faz o papel do dispositivo, o Mosquitto é a borda MQTT, o gateway passa para o RabbitMQ e cada serviço lê só a sua fila.
+- **Fluxos:** IoT → Web, Web → IoT e IA. O resto da apresentação mostra os três funcionando.
 
-**A saída de emergência**, em qualquer caso:
+## 2. Pedro — Plataforma e mensageria (PLAT)
 
-```bash
-cd backend && .venv\Scripts\python.exe tools/fake_device.py --interval 5
-```
+1. Terminal: `docker compose ps`, tudo `healthy`. Falar que é um comando só (`compose.yaml` na raiz) e que os 16 serviços têm healthcheck.
+2. Segredos: `python scripts/gerar_segredos.py` gera tudo na máquina; `.env` e `secrets/` estão no `.gitignore`. Cada serviço tem usuário próprio no Mosquitto, no RabbitMQ e no InfluxDB.
+3. Tela **Mensageria**: filas, taxas e consumidores.
+4. `docker compose stop writer`: a `q.writer` cresce na tela. `docker compose start writer`: esvazia. Nada se perdeu.
+5. DLQ em zero. Explicar o caminho de uma mensagem com erro: `tv.writer.retry` com espera, depois `q.dlq`.
 
-Isso publica direto no broker local e pula o broker público inteiro. **Avise que
-é o simulador** — a rubrica exige o dispositivo, então isso é recurso de último
-minuto para não perder o resto da demonstração, nunca substituto.
+**Perguntas prováveis:** por que RabbitMQ além do MQTT (borda leve × barramento interno com fila por consumidor); o que é a DLQ; como o writer evita duplicar (id do envelope guardado).
+
+## 3. Igor — Dispositivo e controle (IOT)
+
+1. Terminal:
+   ```
+   docker compose exec mosquitto sh -c 'mosquitto_sub -u gateway -P "$MQTT_GATEWAY_PASSWORD" -t "tankvitals/+/+/+/telemetry" -v'
+   ```
+   Ler um envelope: `id`, `ts`, `type`, `device`, `payload`.
+2. `SIM_SPEED=60`: 1 s real = 1 min simulado; um dia simulado dura 24 min.
+3. Dashboard: o aerador liga quando o oxigênio fica abaixo de 5 mg/L e desliga em 6,5 (histerese, para não ficar ligando e desligando). Quem decide é o serviço `rules`.
+4. Entrar como `operator`, ligar a **Reposição de água**, confirmar e mostrar o nível subindo. O comando faz o caminho inverso: API → RabbitMQ → gateway → Mosquitto → simulador.
+
+**Perguntas prováveis:** o que acontece se o gateway cair (as filas seguram); por que histerese; como o simulador simula a falha (física do `core/physics.py`, a mesma do treino).
+
+## 4. João Pedro — Backend e assistente (BACK)
+
+1. Entrar como `viewer`: sem botões e sem Auditoria. Tentar comandar dá 403 (mostrar em `/api/docs` ou no terminal).
+2. `/api/docs`: rotas organizadas, login JWT pelo botão Authorize.
+3. pgAdmin (já com o banco cadastrado): tabelas `devices`, `device_fields`, `rules`, `alerts` e `audit`.
+4. InfluxDB: Data Explorer, measurement `telemetry`.
+5. **Assistente:** perguntar sobre o estado da bomba; a resposta chega aos poucos (streaming), com os dados atuais. Fazer a 6ª pergunta no mesmo minuto e mostrar o limite (429).
+
+**Perguntas prováveis:** por que dois bancos (cadastro relacional × série temporal); como funciona o ticket do WebSocket (uso único, curto); por que LLM local (sem nuvem, sem chave).
+
+## 5. Luciano — Interface e 3D (WEB)
+
+1. Dashboard: leituras mudando sozinhas pelo WebSocket. Trocar o período do gráfico e ler os indicadores: mínimo, máximo, média, tempo fora da faixa e quantas vezes o aerador ligou.
+2. Como `admin`, em **Dispositivos**, apertar a faixa do oxigênio e voltar ao dashboard: a cor muda sem mexer no código. As telas são montadas pelo cadastro.
+3. **Gêmeo 3D:** girar a cena e mostrar a legenda de cores. A falha fica para o Eduardo.
+4. Mostrar o alto contraste no menu do usuário.
+
+## 6. Eduardo — Inteligência artificial (IA)
+
+1. **Laboratório:** mostrar os parâmetros que o enunciado exige (equipamentos, dias, % que falha e modos, ruído, faltantes e outliers, semente), pedir a geração (1.008.000 leituras) e mostrar o andamento. A API não trava: o trabalho vai pela fila para o `worker`.
+2. **Treinamento:** MAE, RMSE e R², previsto × real, importância dos atributos e comparação com a base (prever a média); o modelo só entra se vencer a base, e entra sem reiniciar, mostrando a versão em uso. Divisão por equipamento, nunca por linha.
+3. **Gêmeo 3D:** injetar falha de rolamento. Em poucos minutos a saúde e a vida útil caem na **Insights**, o alerta abre e a bomba fica vermelha e treme.
+4. **Reparar** e mostrar a recuperação. Parar o simulador (`docker compose stop simulator`) faz o 3D avisar "sem dados"; depois `start`.
+
+**Perguntas prováveis:** por que dados sintéticos; o que é vida útil restante; como evitam que o modelo "cole" (o rótulo nunca sai do simulador); histerese do alerta (3 leituras ruins abrem, 10 boas fecham).
+
+## 7. Encerramento
+
+Slide final e perguntas. Qualquer integrante pode ser perguntado sobre qualquer parte: leiam as perguntas prováveis dos outros.
 
 ---
 
-## Checklist de ensaio (ENT-04)
+## Plano B
 
-- [ ] Quem fala cada bloco está preenchido na tabela
-- [ ] Ensaiado dentro de 10 min, cronometrado
-- [ ] A demonstração do alerta foi ensaiada e funciona
-- [ ] Cada integrante sabe responder o básico da frente do colega —
-      as perguntas mais comuns e as respostas curtas estão em
-      [COMO-FUNCIONA.md §4](COMO-FUNCIONA.md#4-perguntas-que-o-professor-faz-e-a-resposta-curta)
-- [ ] Ensaiado o que fazer se a bridge cair
-- [ ] Ambiente sobe do zero em menos de 5 min (ENT-03)
+| Se… | Faça |
+| --- | --- |
+| um serviço não sobe | `docker compose logs <serviço>`; `docker compose restart <serviço>` |
+| o assistente não responde | o modelo ainda está carregando; seguir e voltar no fim |
+| o treino demora | mostrar o último modelo aceito na tela Treinamento |
+| o projetor apaga as cores | alto contraste no menu do usuário |
