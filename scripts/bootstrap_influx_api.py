@@ -27,8 +27,10 @@ def main() -> int:
         org = _single(orgs.get("orgs"), "organization", org_name)
         buckets = _api_json(base_url, admin_token, "GET", f"/api/v2/buckets?{urlencode({'orgID': org['id'], 'name': bucket_name})}")
         bucket = _single(buckets.get("buckets"), "bucket", bucket_name)
-        lab = _api_json(base_url, admin_token, "GET",
-                        f"/api/v2/buckets?{urlencode({'orgID': org['id'], 'name': lab_bucket_name})}").get("buckets")
+        # Filtrar por nome inexistente dá 404 no InfluxDB: lista os da org e procura aqui.
+        listed = _api_json(base_url, admin_token, "GET",
+                           f"/api/v2/buckets?{urlencode({'orgID': org['id'], 'limit': 100})}").get("buckets") or []
+        lab = [b for b in listed if isinstance(b, dict) and b.get("name") == lab_bucket_name]
         if not lab:
             # Amostras do laboratório: guardadas 30 dias, longe do histórico ao vivo.
             lab = [_api_json(base_url, admin_token, "POST", "/api/v2/buckets", {
@@ -43,7 +45,9 @@ def main() -> int:
             raise BootstrapError("InfluxDB did not return the API token")
         _write_private_token(token_path, token)
     except Exception as exc:
-        print(f"ERROR: Could not create bucket-scoped API token ({type(exc).__name__})", file=sys.stderr)
+        # BootstrapError nunca leva token nem corpo de resposta; os outros erros só mostram o tipo.
+        detail = str(exc) if isinstance(exc, BootstrapError) else type(exc).__name__
+        print(f"ERROR: Could not create bucket-scoped API token ({detail})", file=sys.stderr)
         return 1
     print("Bucket-scoped API token created; its value was not displayed.")
     return 0
