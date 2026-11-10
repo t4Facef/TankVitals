@@ -3,14 +3,34 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import JSON, Column, MetaData, String, Table, create_engine, select, update
-from app.core.catalog import metadata as catalog_metadata, jobs, model_versions, log
+from app.core.catalog import metadata as catalog_metadata, alerts, jobs, model_versions, log
 
 def timestamp(value):
     if value is None or isinstance(value, datetime):
         return value
     return datetime.fromisoformat(value.replace('Z', '+00:00'))
 
+def mirror_alert(conn, data):
+    """O alerta da IA vai também para a tabela `alerts`, a mesma dos alertas de faixa.
+
+    É de lá que `GET /api/alerts`, a tela Insights, o 3D e o assistente leem. O
+    alerta da IA não tem variável (`field_key` nulo) e há no máximo um aberto
+    por equipamento: abrir de novo um já aberto não duplica, e fechar fecha esse.
+    """
+    open_row = ((alerts.c.device_id == data['device']) & alerts.c.field_key.is_(None)
+                & alerts.c.closed_at.is_(None))
+    if data.get('closed_at'):
+        conn.execute(alerts.update().where(open_row).values(closed_at=timestamp(data['closed_at'])))
+    elif not conn.execute(alerts.select().where(open_row)).first():
+        conn.execute(alerts.insert().values(
+            device_id=data['device'], field_key=None, level=data.get('level', 'critico'),
+            message=data['message'], value=data.get('value'), opened_at=timestamp(data['opened_at'])))
+
+
 def mirror(conn, kind, data):
+    if kind == 'alert':
+        mirror_alert(conn, data)
+        return
     if kind == 'active':
         conn.execute(model_versions.update().values(active=False))
         conn.execute(model_versions.update().where(model_versions.c.version == data['version']).values(active=True))

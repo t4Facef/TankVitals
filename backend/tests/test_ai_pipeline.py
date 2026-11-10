@@ -97,12 +97,19 @@ def test_inference_recovers_alert_state_and_pending_events(store, tmp_path):
     def reading(index):
         return envelope("telemetry", "bomba-rec-01", {field: 1 for field in PUMP_FIELDS},
                         ts=(start + timedelta(minutes=index)).isoformat())
+    def alert_rows():
+        from app.core.catalog import alerts
+        with store.engine.connect() as conn:
+            return [(r.device_id, r.field_key, r.level, r.closed_at is not None)
+                    for r in conn.execute(alerts.select())]
+
     async def scenario():
         service = InferenceService(store, bus, tmp_path)
         for index in range(32):
             await service.handle(reading(index))
         assert len(store.list("alert")) == 1
         assert store.list("alert")[0]["closed_at"] is None
+        assert alert_rows() == [("bomba-rec-01", None, "critico", False)]
         # Simula queda depois de persistir o resultado, antes da publicação.
         bus.fail = True
         message = reading(32)
@@ -118,6 +125,8 @@ def test_inference_recovers_alert_state_and_pending_events(store, tmp_path):
         for index in range(33, 43):
             await recovered.handle(reading(index))
         assert store.list("alert")[0]["closed_at"] is not None
+        # O mesmo alerta, fechado, e nenhuma linha duplicada pelas reentregas.
+        assert alert_rows() == [("bomba-rec-01", None, "critico", True)]
     asyncio.run(scenario())
 
 
