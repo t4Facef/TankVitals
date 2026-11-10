@@ -1,4 +1,4 @@
-﻿"""API e ingestor no mesmo processo: uvicorn app.main:app --reload."""
+"""API e ingestor no mesmo processo: uvicorn app.main:app --reload."""
 import asyncio
 import json
 import logging
@@ -18,6 +18,10 @@ from app.ai_api import current_user
 from fastapi.security import HTTPAuthorizationCredentials
 
 logger = logging.getLogger(__name__)
+
+# Abrem sem login: a saúde (healthcheck), o próprio login e a documentação. As
+# rotas listadas na documentação continuam exigindo o token (botão Authorize).
+PUBLIC_PATHS = {"/api/health", "/api/auth/login", "/api/docs", "/api/openapi.json"}
 
 
 def create_app(repo_factory=InfluxRepository, ingestor_factory=MqttIngestor) -> FastAPI:
@@ -122,12 +126,15 @@ def create_app(repo_factory=InfluxRepository, ingestor_factory=MqttIngestor) -> 
             if messaging_task:
                 await asyncio.gather(messaging_task, return_exceptions=True)
 
-    app = FastAPI(title="TankVitals API", version="0.1.0", lifespan=lifespan)
+    # A documentação fica sob /api: só a porta do front é publicada, e o nginx
+    # encaminha para a API apenas o que começa com /api e /ws.
+    app = FastAPI(title="TankVitals API", version="0.2.0", lifespan=lifespan,
+                  docs_url="/api/docs", openapi_url="/api/openapi.json", redoc_url=None)
 
     @app.middleware("http")
     async def require_api_session(request: Request, call_next):
         if (request.url.path.startswith("/api/")
-                and request.url.path not in {"/api/health", "/api/auth/login"}):
+                and request.url.path not in PUBLIC_PATHS):
             value = request.headers.get("authorization", "")
             scheme, _, token = value.partition(" ")
             try:

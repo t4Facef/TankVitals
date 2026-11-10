@@ -144,3 +144,9 @@ def test_seed_uses_readable_names_and_architecture_ranges(registry):
         assert (flow['label'], flow['unit'], flow['ok_min'], flow['crit_min'], flow['ok_max']) == ('Vazão', 'L/min', 40, 30, None)
         # O estado do atuador não vira variável do cadastro.
         assert conn.execute(select(fields.c.key).where(fields.c.device_id == 'aerador-01')).first() is None
+
+def test_api_docs_open_under_api_without_login(registry):
+    assert registry.client.get('/api/docs').status_code == 200
+    spec = registry.client.get('/api/openapi.json')
+    assert spec.status_code == 200 and '/api/devices' in spec.json()['paths']
+    assert registry.client.get('/api/devices').status_code == 401
