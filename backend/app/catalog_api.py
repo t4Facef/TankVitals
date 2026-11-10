@@ -255,12 +255,21 @@ def audit(type: str | None=None, username: str | None=Query(None, alias='user'),
                  for r in conn.execute(query.limit(page_size).offset((page-1)*page_size)).mappings()]
         return {'items':items, 'total':total, 'page':page, 'page_size':page_size}
 
+def field_ranges(e):
+    """As faixas ativas do cadastro, para o histórico contar o tempo fora delas."""
+    bounds = ('ok_min', 'ok_max', 'crit_min', 'crit_max')
+    with e.connect() as conn:
+        rows = conn.execute(select(db.fields).where(db.fields.c.active.is_(True))).mappings()
+        return {(r['device_id'], r['key']): tuple(r[b] for b in bounds)
+                for r in rows if any(r[b] is not None for b in bounds)}
+
 @router.get('/history')
 def telemetry_history(request: Request, range: Literal['1h','6h','24h','7d']='24h',
-                      device: list[str] | None=Query(None), user=Depends(viewer)):
+                      device: list[str] | None=Query(None), e=Depends(engine), user=Depends(viewer)):
     from app.telemetry_history import query_history
     from app.config import settings
-    return query_history(request.app.state.repo.query_api, settings.influx_bucket, range, device)
+    return query_history(request.app.state.repo.query_api, settings.influx_bucket, range, device,
+                         ranges=field_ranges(e))
 
 @router.get('/devices/{device_id}/history')
 def history(device_id: str, request: Request, variable: str, period: Literal['1h','24h','7d']='24h',
