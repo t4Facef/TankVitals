@@ -35,6 +35,7 @@ def write_lab_sample(path, dataset_id):
 
 def insight_history(period, device):
     from app.config import settings
+    from app import flux as bound
     from app.influx_repo import RepositoryUnavailable
     durations = {"1h": 3600, "6h": 21600, "24h": 86400, "7d": 604800}
     if period not in durations or (device and not re.fullmatch(r"[a-z0-9-]{1,80}", device)):
@@ -53,10 +54,10 @@ def insight_history(period, device):
     try:
         with client() as influx:
             api = influx.query_api()
-            tables = api.query(flux + '|> aggregateWindow(every: duration(v: params.step), fn: mean, createEmpty: false)', params=params)
+            tables = bound.query(api, flux + '|> aggregateWindow(every: duration(v: params.step), fn: mean, createEmpty: false)', params)
             stats = {}
             for operation in ("count", "min", "max", "mean", "last"):
-                for table in api.query(flux + f'|> {operation}()', params=params):
+                for table in bound.query(api, flux + f'|> {operation}()', params):
                     for record in table.records:
                         key = (record.values["device"], record.get_field())
                         stats.setdefault(key, {})["avg" if operation == "mean" else operation] = record.get_value()

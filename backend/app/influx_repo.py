@@ -15,6 +15,7 @@ import json
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
 
+from app import flux
 from app.config import settings
 from app.models import SensorReading
 from app.presentation import UNITS, iso_time
@@ -159,7 +160,7 @@ class InfluxRepository:
         if tank_id is not None:
             params["tank"] = tank_id
         try:
-            tables = self.query_api.query(query, org=settings.influx_org, params=params)
+            tables = self.query_api.query(flux.bind_variables(query, params), org=settings.influx_org)
             return [record.values for table in tables for record in table.records]
         except Exception as exc:
             logger.warning("Falha na consulta ao InfluxDB: %s", exc)

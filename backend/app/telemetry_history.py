@@ -13,6 +13,7 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 
+from app import flux
 from app.influx_repo import RepositoryUnavailable
 
 PERIODS = {'1h': 3600, '6h': 21600, '24h': 86400, '7d': 604800}
@@ -84,20 +85,22 @@ def query_history(api, bucket, period, devices=None, variable=None, ranges=None)
         # Yields separados preservam o tipo inteiro do count numa requisição só.
         return 'base = ' + source + '\n' + '\n'.join(f'base |> {op} |> yield(name: "{name}")' for name, op in ops)
 
+    def run(query):
+        return flux.query(api, query, params)
+
     stats: dict = {}
     try:
-        tables = list(api.query(base + NUMERIC + window, params=params))
-        tables += list(api.query(base + STATE + window, params=params))
-        _collect(api.query(yields(base + NUMERIC, [(op, f'{op}()') for op in ('count', 'min', 'max', 'mean', 'last')]),
-                           params=params), stats, {'mean': 'avg'})
-        _collect(api.query(yields(base + STATE, [
+        tables = list(run(base + NUMERIC + window))
+        tables += list(run(base + STATE + window))
+        _collect(run(yields(base + NUMERIC, [(op, f'{op}()') for op in ('count', 'min', 'max', 'mean', 'last')])),
+                 stats, {'mean': 'avg'})
+        _collect(run(yields(base + STATE, [
             ('count', 'count()'), ('last', 'last()'), ('on', 'sum()'),
             ('turn_ons', 'difference() |> filter(fn: (r) => r._value == 1) |> count()'),
-        ]), params=params), stats)
+        ])), stats)
         predicate = out_of_range_predicate(ranges)
         if predicate:
-            _collect(api.query(yields(base + NUMERIC + f'|> filter(fn: (r) => {predicate})\n',
-                                      [('out', 'count()')]), params=params), stats)
+            _collect(run(yields(base + NUMERIC + f'|> filter(fn: (r) => {predicate})\n', [('out', 'count()')])), stats)
     except Exception as exc:
         raise RepositoryUnavailable('Histórico indisponível') from exc
 

@@ -1,194 +1,236 @@
 # TankVitals
 
-**Monitoramento IoT de tanque de aquicultura / aquário em tempo real.**
+**Monitoramento de tanque de aquicultura com IoT, mensageria e IA, em tempo real.**
 
-Projeto da disciplina **Web II — UniFACEF 2026 — 1º Bimestre**.
-
-Fluxo: `ESP32 (Wokwi) → MQTT → Mosquitto → Python → InfluxDB → Vue 3 + TypeScript`
+Projeto da disciplina **Web II, UniFACEF 2026**. Este README descreve o
+2º bimestre; o 1º bimestre (ESP32 no Wokwi, MQTT e InfluxDB) continua no
+histórico do Git e na [ARQUITETURA §1–10](docs/ARQUITETURA.md).
 
 ---
 
-## 1. O problema real
+## 1. O problema
 
-Tanques de criação de peixes e aquários de exposição dependem de uma faixa
-estreita de qualidade da água. Fora dela, o prejuízo é rápido e irreversível:
+Tanques de criação de peixes dependem de uma faixa estreita de qualidade da
+água. Fora dela, o prejuízo é rápido: oxigênio baixo mata em horas, e a bomba
+de recirculação, quando quebra, para a filtragem e a oxigenação de uma vez.
 
-| Situação | Consequência | Janela de tempo |
+O acompanhamento costuma ser manual: alguém mede uma ou duas vezes por dia e só
+percebe a bomba quando ela já parou. O TankVitals mede tudo continuamente, age
+sozinho quando o oxigênio cai e usa IA para avisar que a bomba vai falhar antes
+de ela falhar.
+
+### O que o sistema vigia
+
+| Parte | Variáveis | O que acontece |
 | --- | --- | --- |
-| Temperatura sobe acima de 30 °C | queda do oxigênio dissolvido, estresse térmico, mortandade | horas |
-| pH sai da faixa 6,5–8,0 | queima de brânquias, amônia vira tóxica | horas |
-| Nível cai (evaporação / vazamento) | bomba trabalha seca e queima; concentração de amônia sobe | horas a 1 dia |
-| Turbidez sobe | matéria orgânica em decomposição, filtro saturado | dias |
+| Água do tanque | temperatura, pH, nível, turbidez, oxigênio dissolvido, luminosidade | dashboard ao vivo, histórico e alerta fora da faixa |
+| Bomba de recirculação | vibração, corrente, temperatura do motor, vazão | a IA estima a saúde e a vida útil restante |
+| Aerador | ligado ou desligado | liga sozinho quando o oxigênio cai abaixo de 5 mg/L e desliga em 6,5 |
+| Reposição de água | ligada ou desligada | ligada pelo botão na Web, com confirmação |
 
-Hoje o acompanhamento é **manual e amostral**: alguém mede com termômetro e kit
-de pH uma ou duas vezes por dia e anota em caderno. O problema não está em
-medir — está em **não perceber a variação entre as medições** e em **não ter
-histórico** para descobrir a causa depois que o problema já aconteceu.
-
-### O que o TankVitals resolve
-
-1. **Medição contínua** — leitura automática a cada 5 segundos, sem depender de
-   alguém estar presente.
-2. **Visibilidade imediata** — dashboard Web mostrando o estado atual de cada
-   grandeza com indicação clara de dentro/fora da faixa segura.
-3. **Histórico consultável** — série temporal armazenada no InfluxDB,
-   permitindo responder "o que aconteceu na madrugada de ontem?".
-4. **Detecção de anomalia** — o sistema compara cada leitura com faixas seguras
-   configuráveis e sinaliza atenção/crítico (no dashboard e no LED do próprio
-   dispositivo).
-
-### Grandezas monitoradas
-
-| Grandeza | Sensor | Faixa segura | Por que importa |
-| --- | --- | --- | --- |
-| Temperatura da água (°C) | DS18B20 | 24,0 – 28,0 | controla metabolismo e oxigênio dissolvido |
-| pH | sonda analógica (potenciômetro no Wokwi) | 6,5 – 8,0 | fora da faixa a amônia se torna tóxica |
-| Nível da água (%) | HC-SR04 (ultrassônico) | > 30 % | protege a bomba e evita concentração de poluentes |
-| Turbidez (NTU) | sensor óptico (LDR no Wokwi) | < 40 | indica carga orgânica e saturação do filtro |
-
-> As faixas acima são o contrato do sistema e estão replicadas em três lugares:
-> firmware (LED local), backend (regra de alerta) e dashboard (cores).
-> Ver [ARQUITETURA.md](docs/ARQUITETURA.md#5-faixas-seguras-e-regra-de-alerta).
+As faixas de cada variável ficam no cadastro do PostgreSQL e podem ser
+editadas pela tela **Dispositivos**.
 
 ---
 
 ## 2. Arquitetura
 
 ```mermaid
-flowchart LR
-    subgraph Dispositivo
-        ESP[ESP32 no Wokwi<br/>DS18B20, HC-SR04,<br/>pH, turbidez]
-    end
-    PUB[test.mosquitto.org<br/>broker publico]
-    MOSQ[Mosquitto local<br/>bridge importa o topico]
-    subgraph Maquina local
-        ING[Ingestor MQTT<br/>paho-mqtt]
-        API[API HTTP + WebSocket<br/>FastAPI]
-        DB[(InfluxDB 2.x<br/>bucket tankvitals)]
-    end
-    WEB[Dashboard<br/>Vue 3 + TS + Vite<br/>Chart.js]
-
-    ESP -->|publish JSON| PUB
-    PUB -->|bridge| MOSQ
-    MOSQ -->|subscribe| ING
-    ING -->|write| DB
-    API -->|Flux query| DB
-    ING -.->|push ao vivo| API
-    API -->|REST + WS| WEB
+flowchart TB
+    SIM[Simulador] <-->|MQTT| MOSQ[Mosquitto] <-->|MQTT| GW[Gateway]
+    GW <--> RMQ{{RabbitMQ}}
+    RMQ --> WR[writer] --> INF[(InfluxDB)]
+    RMQ <--> RU[rules]
+    RMQ <--> IAS[inference]
+    RMQ <--> WK[worker]
+    RMQ <--> API[API FastAPI]
+    API --> PG[(PostgreSQL)]
+    API --> OLL[Ollama]
+    API -.->|histórico| INF
+    API <-->|REST + WebSocket| WEB[Navegador]
 ```
 
-O detalhamento de cada contrato (tópicos, payload, schema do banco, endpoints)
-está em **[docs/ARQUITETURA.md](docs/ARQUITETURA.md)**.
+| Peça | Papel |
+| --- | --- |
+| **Simulador** | faz o papel do dispositivo: gera as leituras, obedece aos comandos e simula falhas na bomba |
+| **Mosquitto** | broker MQTT da borda, com usuário, senha e ACL por cliente |
+| **Gateway** | ponte entre os brokers: MQTT → RabbitMQ para leituras, RabbitMQ → MQTT para comandos |
+| **RabbitMQ** | barramento interno: uma fila por serviço, nova tentativa com espera e DLQ para o que falhar |
+| **writer** | grava leituras e previsões no InfluxDB, sem gravar a mesma mensagem duas vezes |
+| **rules** | regra automática do aerador e alertas de faixa |
+| **inference** | aplica os modelos treinados na bomba ao vivo: saúde, vida útil restante e alertas |
+| **worker** | trabalhos demorados (gerar dados sintéticos e treinar) sem travar a API |
+| **API** | única porta do navegador: REST, WebSocket com ticket, login JWT e o assistente |
+| **InfluxDB** | séries temporais das leituras e das previsões |
+| **PostgreSQL** | usuários, dispositivos, faixas, regras, alertas, auditoria e registros da IA |
+| **Ollama** | LLM local (`llama3.2:3b`) do assistente, sem nuvem e sem chave de API |
+| **Navegador** | app Vue 3 com dashboard, cena 3D e as telas de IA, servido pelo nginx na porta 8080 |
 
-### Onde o broker roda, e por quê
+### Os três fluxos
 
-O ESP32 simulado no Wokwi roda na nuvem e **não enxerga a rede local** da
-equipe. Como o projeto não tem servidor público, o caminho é o inverso: o
-dispositivo publica no `test.mosquitto.org` — que é uma instância pública do
-próprio Mosquitto — e o **Mosquitto local importa o tópico por bridge**.
+1. **IoT → Web:** simulador → Mosquitto → gateway → RabbitMQ. O writer grava no
+   InfluxDB e, ao mesmo tempo, a API recebe pela fila `q.ws` e empurra pelo
+   WebSocket. Dashboard e 3D atualizam sozinhos.
+2. **Web → IoT:** botão no dashboard → API → RabbitMQ → gateway → Mosquitto →
+   simulador liga o atuador. A mudança volta pelas leituras seguintes.
+3. **IA:** o Laboratório pede os dados sintéticos e o Treinamento pede os
+   modelos, os dois pela fila do worker. O inference aplica o modelo aceito na
+   telemetria ao vivo, e saúde, vida útil e alertas voltam pelo RabbitMQ até a
+   Insights e as cores do 3D.
 
-Assim o backend continua falando só com um broker local, e nenhuma máquina da
-equipe precisa de porta aberta. Como o broker público é aberto a qualquer um, o
-prefixo de tópico do grupo é único: `tankvitals-unifacef-g3`.
-
-Passo a passo em [TAREFAS.md](docs/TAREFAS.md) (INFRA-04) e a discussão completa
-na [ARQUITETURA §7](docs/ARQUITETURA.md#7-conectividade-wokwi--mosquitto), que
-também registra por que a ideia de VM própria foi descartada.
-
----
-
-## 3. Stack
-
-| Camada | Tecnologia | Onde vive |
-| --- | --- | --- |
-| Dispositivo | ESP32 simulado no Wokwi (C++/Arduino) | `firmware/wokwi/` |
-| Comunicação | MQTT 3.1.1 | tópicos `tankvitals-unifacef-g3/#` |
-| Broker | Eclipse Mosquitto 2.x | `infra/mosquitto/` |
-| Backend | Python 3.13 — paho-mqtt + FastAPI + influxdb-client | `backend/` |
-| Banco de série temporal | InfluxDB 2.7 | `infra/` (Docker) |
-| Frontend | Vue 3 + TypeScript + Vite | `frontend/` |
-| Visualização | Chart.js (via vue-chartjs) | `frontend/src/components/` |
-| Versionamento | Git + GitHub | este repositório |
+Contratos completos (tópicos, envelope, filas, bancos e rotas):
+[docs/ARQUITETURA.md](docs/ARQUITETURA.md), §11 a §17.
 
 ---
 
-## 4. Estrutura do repositório
+## 3. Como subir
+
+**Requisitos:** Docker Desktop com pelo menos 8 GB de memória para o WSL, e
+Python 3.11 ou mais novo (só para gerar os segredos; o script não usa
+dependências).
+
+Na raiz do repositório:
+
+```powershell
+python scripts/gerar_segredos.py
+docker compose up -d --build
+docker compose ps
+```
+
+1. O gerador cria o `.env` e a pasta `secrets/`, os dois fora do Git, e
+   imprime uma vez as senhas dos usuários de demonstração. Anote-as.
+2. A primeira subida baixa as imagens e o modelo do assistente (cerca de 2 GB).
+   O sistema não espera pelo modelo: enquanto ele baixa, a tela do assistente
+   avisa que está carregando.
+3. Abra <http://localhost:8080> e entre com um dos usuários abaixo.
+
+Para parar, `docker compose down`. **Não use `down -v`**: ele apaga os dados e
+o modelo baixado.
+
+### Usuários de demonstração
+
+| Usuário | Pode |
+| --- | --- |
+| `viewer` | ver tudo, sem comandar nada |
+| `operator` | o mesmo, mais ligar e desligar os atuadores |
+| `admin` | tudo: cadastro, gerar dados, treinar e auditoria |
+
+As senhas são as `DEMO_*_PASSWORD` do `.env` gerado. Cinco senhas erradas
+seguidas bloqueiam a conta por 5 minutos. O login vale 2 horas.
+
+### Endereços
+
+| O quê | Onde |
+| --- | --- |
+| Aplicação | <http://localhost:8080> |
+| Documentação da API | <http://localhost:8080/api/docs> |
+| RabbitMQ Management | <http://127.0.0.1:15672> |
+| InfluxDB | <http://127.0.0.1:8086> |
+| pgAdmin (PostgreSQL já cadastrado) | <http://127.0.0.1:5050> |
+
+Só a porta 8080 fica aberta para a rede; as outras atendem apenas a própria
+máquina. Os logins das ferramentas estão no `.env`.
+
+---
+
+## 4. As telas
+
+| Tela | O que mostra |
+| --- | --- |
+| **Dashboard** | leituras ao vivo, gráfico do histórico e indicadores (mínimo, máximo, média, tempo fora da faixa, quantas vezes o atuador ligou); botões dos atuadores |
+| **Gêmeo 3D** | o tanque e a bomba em 3D, com as cores da faixa; a bomba treme quando a IA prevê falha |
+| **Dispositivos** | cadastro de dispositivos, variáveis e faixas (admin) |
+| **Laboratório** | gera a base sintética de treino, com acompanhamento do job |
+| **Treinamento** | treina os modelos, compara com a base e mostra as métricas |
+| **Insights** | saúde e vida útil da bomba, tendência e alertas da IA |
+| **Assistente** | perguntas em linguagem natural sobre o tanque, respondidas pelo LLM local com os dados atuais |
+| **Mensageria** | filas, taxas e consumidores do RabbitMQ, últimas mensagens e a DLQ |
+| **Auditoria** | quem fez o quê: logins, comandos e mudanças no cadastro (admin) |
+| **Ferramentas** | atalhos para a documentação da API e as ferramentas de cada serviço |
+
+No menu do usuário há o modo de alto contraste.
+
+---
+
+## 5. Demonstração em comandos
+
+```powershell
+# Mensagens MQTT chegando no broker
+docker compose exec mosquitto sh -c 'mosquitto_sub -u gateway -P "$MQTT_GATEWAY_PASSWORD" -t "tankvitals/+/+/+/telemetry" -v'
+
+# Parar o writer: a fila q.writer cresce na Mensageria; ao voltar, esvazia
+docker compose stop writer
+docker compose start writer
+
+# Parar o simulador: o dashboard e o 3D avisam que estão sem dados
+docker compose stop simulator
+docker compose start simulator
+```
+
+A falha da bomba é simulada pela tela **Gêmeo 3D**, entrando como `operator`
+ou `admin`: escolha o modo (rolamento, entupimento, superaquecimento ou
+desbalanceamento) e, em poucos minutos, a saúde e a vida útil caem na Insights,
+o alerta abre e a bomba fica crítica no 3D. **Reparar** devolve a bomba ao
+estado de nova.
+
+O roteiro completo da apresentação está em
+[docs/ROTEIRO-APRESENTACAO.md](docs/ROTEIRO-APRESENTACAO.md).
+
+---
+
+## 6. Segurança
+
+- Nenhuma senha ou chave no repositório: o `.env` e o `secrets/` são gerados na
+  máquina e ignorados pelo Git.
+- Cada serviço tem o próprio usuário no Mosquitto, no RabbitMQ e no InfluxDB,
+  com permissão só no que usa.
+- Login com JWT e três papéis, conferidos na API; o WebSocket abre com um ticket
+  de uso único.
+- Bloqueio por tentativas no login e limite de perguntas por minuto no
+  assistente.
+- Containers sem root e só a porta 8080 exposta à rede.
+
+---
+
+## 7. Estrutura do repositório
 
 ```
 TankVitals/
-├─ README.md                       <- problema, arquitetura e stack
-├─ .env.example                    <- modelo de configuração (copie para .env)
-├─ docs/
-│  ├─ COMO-FUNCIONA.md             <- explicação completa + como rodar do zero
-│  ├─ ROTEIRO-APRESENTACAO.md      <- roteiro de 10 min, bloco por bloco
-│  ├─ GUIA-DEMONSTRACAO.md         <- checklist da apresentação, item por item
-│  ├─ PREPARACAO-PERGUNTAS.md      <- a arquitetura explicada, peça por peça
-│  ├─ ARQUITETURA.md               <- contratos: MQTT, JSON, InfluxDB, API
-│  ├─ TAREFAS.md                   <- backlog com passo a passo e aceite
-│  ├─ O-QUE-FALTA.md               <- o que ainda depende de gente
-│  └─ PADROES-DESENVOLVIMENTO.md   <- branch, commit, PR e receitas de Git
-├─ firmware/wokwi/                 <- circuito e sketch do ESP32 (FW-01..05)
+├─ compose.yaml            <- ponto de entrada do `docker compose up`
 ├─ backend/
-│  ├─ Dockerfile                  <- imagem do backend (perfil `app`)
-│  ├─ app/                         <- BE-01..08: config, models, alerts,
-│  │                                  influx_repo, mqtt_ingestor, api, main
-│  ├─ tools/fake_device.py         <- BE-09: publicador falso p/ desenvolver
-│  ├─ tests/                       <- BE-09
-│  └─ requirements.txt
-├─ frontend/                       <- FE-01..08: Vue 3 + TS + Vite + Chart.js
-│  └─ Dockerfile, nginx.conf       <- imagem do dashboard (perfil `app`)
-└─ infra/
-   ├─ docker-compose.yml           <- INFRA-01: Mosquitto + InfluxDB
-   └─ mosquitto/config/            <- listener e bridge (INFRA-01, INFRA-04)
+│  ├─ app/
+│  │  ├─ simulator/        <- dispositivo simulado (sensores, bomba, atuadores)
+│  │  ├─ gateway/          <- ponte MQTT ↔ RabbitMQ
+│  │  ├─ writer/           <- RabbitMQ → InfluxDB
+│  │  ├─ rules/            <- regra do aerador e alertas de faixa
+│  │  ├─ inference/        <- modelos ao vivo
+│  │  ├─ worker/           <- jobs de dados e treino
+│  │  ├─ core/             <- cadastro, login, física da bomba e seed
+│  │  ├─ assistant/        <- contexto e conversa com o Ollama
+│  │  └─ main.py           <- API FastAPI
+│  └─ tests/
+├─ frontend/               <- Vue 3 + TypeScript + Vite, nginx
+├─ infra/                  <- docker-compose, Mosquitto, RabbitMQ, pgAdmin
+├─ scripts/                <- gerador de segredos e bootstrap dos tokens
+├─ firmware/wokwi/         <- ESP32 do 1º bimestre
+└─ docs/
 ```
 
----
+### Documentação
 
-## 5. Estado atual
-
-| Frente | Situação |
+| Documento | Para quê |
 | --- | --- |
-| Definição do problema | ✅ documentado (este README) |
-| Arquitetura e contratos (MQTT, JSON, InfluxDB, API) | ✅ fechados em [docs/ARQUITETURA.md](docs/ARQUITETURA.md) |
-| Backlog de implementação | ✅ escrito em [docs/TAREFAS.md](docs/TAREFAS.md) |
-| Projeto Vue criado (Vite + TS + Chart.js instalados) | ✅ `npm run build` passando |
-| Projeto Python criado (dependências instaladas) | ✅ `pytest` rodando |
-| Infraestrutura no ar (Mosquitto + InfluxDB) | ✅ INFRA-01, 02 e 04 validados |
-| Backend e frontend em container (perfil `app`) | ✅ imagens buildando |
-| Circuito no Wokwi e leitura dos 4 sensores | ✅ FW-01 e FW-02 |
-| Firmware: Wi-Fi, MQTT e publicação | ✅ FW-03..05 validados no Wokwi (0 % de perda, Last Will, `/cmd`) |
-| Backend Python | ✅ BE-01..09, 106 testes verdes |
-| Frontend Vue 3 | ✅ FE-01..08, build limpo |
-| Cadeia completa validada (MQTT → Influx → API → dashboard) | ✅ com o ESP32 no Wokwi e com o simulador |
-| Apresentação e evidências | 🟡 roteiro e guias prontos; faltam link do Wokwi, prints e ensaio |
+| [ARQUITETURA.md](docs/ARQUITETURA.md) | contratos entre as partes |
+| [TAREFAS-2BIM.md](docs/TAREFAS-2BIM.md) | tarefas do bimestre, por frente |
+| [IA.md](docs/IA.md) | física da bomba, dados sintéticos, modelos e métricas |
+| [ROTEIRO-APRESENTACAO.md](docs/ROTEIRO-APRESENTACAO.md) | roteiro da apresentação |
+| [PADROES-DESENVOLVIMENTO.md](docs/PADROES-DESENVOLVIMENTO.md) | branch, commit e PR |
 
-O sistema roda ponta a ponta com o dispositivo real: o ESP32 no Wokwi publica no
-MQTT, o ingestor valida e grava no InfluxDB, a API serve o dashboard e o gráfico
-atualiza ao vivo por WebSocket. **Todos os requisitos do 1º bimestre estão
-atendidos.** O que falta é preparar a entrega: link público do Wokwi, prints e
-ensaio.
+### Testes
 
-**Para entender o sistema e rodar do zero:
-[docs/COMO-FUNCIONA.md](docs/COMO-FUNCIONA.md).**
-Para apresentar: [docs/ROTEIRO-APRESENTACAO.md](docs/ROTEIRO-APRESENTACAO.md).
-
-O passo a passo e o critério de aceite de cada tarefa estão em
-**[docs/TAREFAS.md](docs/TAREFAS.md)**; o que sobrou está reunido em
-**[docs/O-QUE-FALTA.md](docs/O-QUE-FALTA.md)**.
-
-Para criar branch, escrever commit e abrir PR, veja o
-[guia de desenvolvimento](docs/PADROES-DESENVOLVIMENTO.md).
-
----
-
-## 6. Continuidade no 2º bimestre
-
-A base já foi desenhada prevendo a ampliação:
-
-- tópico `<prefixo>/<tank>/cmd` já é assinado pelo firmware (atuação remota:
-  alterar intervalo de leitura, futuramente acionar aerador/bomba);
-- `tank_id` é *tag* no InfluxDB, então múltiplos tanques entram sem migração;
-- mensagem de status com *Last Will* já permite detectar dispositivo offline;
-- WebSocket no backend já prevê push em tempo real para alarmes.
-
----
+```powershell
+cd backend
+python -m pytest tests ../scripts/tests -q
+cd ../frontend
+npm run build
+```
