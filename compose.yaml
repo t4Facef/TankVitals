@@ -1,0 +1,10 @@
+# TankVitals: tudo sobe com um comando, a partir da raiz do repositório.
+#
+#   python scripts/gerar_segredos.py   # uma vez: gera .env e secrets/ (fora do Git)
+#   docker compose up --build
+#
+# Os serviços estão em infra/docker-compose.yml; o .env lido é o desta pasta.
+name: tankvitals
+
+include:
+  - infra/docker-compose.yml
