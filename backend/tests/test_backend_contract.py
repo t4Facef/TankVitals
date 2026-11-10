@@ -135,3 +135,12 @@ def test_alembic_upgrade_repeatable(tmp_path, monkeypatch):
     assert {'users','devices','device_fields','rules','commands','alerts','audit','jobs','model_versions'} <= set(inspect(engine).get_table_names())
     engine.dispose()
 
+
+def test_seed_uses_readable_names_and_architecture_ranges(registry):
+    from app.core.catalog import fields
+    with registry.engine.connect() as conn:
+        assert conn.execute(select(devices.c.name).where(devices.c.id == 'bomba-rec-01')).scalar_one() == 'Bomba de recirculação'
+        flow = conn.execute(select(fields).where(fields.c.device_id == 'bomba-rec-01', fields.c.key == 'flow_l_min')).mappings().one()
+        assert (flow['label'], flow['unit'], flow['ok_min'], flow['crit_min'], flow['ok_max']) == ('Vazão', 'L/min', 40, 30, None)
+        # O estado do atuador não vira variável do cadastro.
+        assert conn.execute(select(fields.c.key).where(fields.c.device_id == 'aerador-01')).first() is None
