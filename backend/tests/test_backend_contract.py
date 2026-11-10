@@ -160,3 +160,10 @@ def test_login_lasts_two_hours_by_default_and_follows_the_env(registry, monkeypa
     assert lifetime() == 2 * 3600
     monkeypatch.setenv('JWT_TTL_MINUTES', '45')
     assert lifetime() == 45 * 60
+
+def test_device_fields_keep_the_equipment_order(registry):
+    from app.simulator.devices import DEVICES
+    login(registry, 'viewer')
+    listed = {d['id']: [f['key'] for f in d['fields']] for d in registry.client.get('/api/devices').json()}
+    for d in DEVICES:
+        assert listed[d.id] == [k for k, _ in d.fields if k not in ('on', 'running')]

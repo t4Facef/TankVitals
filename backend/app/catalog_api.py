@@ -6,6 +6,7 @@ from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from app.core import catalog as db
 from app.core.auth import require_role
+from app.simulator.devices import DEVICES as KNOWN_DEVICES
 
 router = APIRouter(prefix='/api')
 viewer, admin = require_role('viewer'), require_role('admin')
@@ -97,10 +98,17 @@ def devices(e=Depends(engine), user=Depends(viewer)):
         result = [dict(r) for r in conn.execute(select(db.devices).order_by(db.devices.c.id)).mappings()]
         ranges = [dict(r) for r in conn.execute(select(db.fields).where(db.fields.c.active.is_(True))).mappings()]
     for d in result:
-        d['fields'] = [present_field(r) for r in ranges if r['device_id'] == d['id']]
+        d['fields'] = [present_field(r) for r in sorted(
+            (r for r in ranges if r['device_id'] == d['id']), key=field_order)]
         d['state_field'] = {'actuator':'on', 'equipment':'running'}.get(d['kind'])
         d['control'] = ('rule' if d['id'] == 'aerador-01' else 'manual') if d['kind'] == 'actuator' else None
     return result
+
+# Ordem das variáveis na tela: a do equipamento; as cadastradas depois vão ao fim, por chave.
+_FIELD_POSITION = {(d.id, key): i for d in KNOWN_DEVICES for i, (key, _) in enumerate(d.fields)}
+
+def field_order(r):
+    return (_FIELD_POSITION.get((r['device_id'], r['key']), len(_FIELD_POSITION)), r['key'])
 
 def present_field(r):
     bounds = {k:r[k] for k in ('ok_min','ok_max','crit_min','crit_max')}
