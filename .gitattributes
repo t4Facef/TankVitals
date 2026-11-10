@@ -1,0 +1,4 @@
+# Arquivos que rodam dentro dos containers Linux: sempre LF, mesmo no checkout do Windows.
+*.sh text eol=lf
+*.conf text eol=lf
+Dockerfile text eol=lf
