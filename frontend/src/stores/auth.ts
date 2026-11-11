@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { loginRequest } from '../api/auth'
+import { demoLoginRequest, loginRequest } from '../api/auth'
 import { configureAuth } from '../api/http'
 import { MOCK } from '../config'
 import { mockLogin } from '../mock/auth'
@@ -71,6 +71,13 @@ export const useAuthStore = defineStore('auth', () => {
     startSession(decoded)
   }
 
+  /** Acesso rápido de demonstração: só funciona se o servidor estiver com ele ligado. */
+  async function demoLogin(asRole: Role): Promise<void> {
+    const decoded = decodeToken((await demoLoginRequest(asRole)).access_token)
+    if (!decoded) throw new Error('A API devolveu um token sem usuário, papel ou validade.')
+    startSession(decoded)
+  }
+
   function logout(): void {
     endSession(false)
   }
@@ -105,7 +112,7 @@ export const useAuthStore = defineStore('auth', () => {
   })
   if (session.value) scheduleExpiry(session.value)
 
-  return { session, expired, isAuthenticated, username, role, hasRole, can, login, logout, expire }
+  return { session, expired, isAuthenticated, username, role, hasRole, can, login, demoLogin, logout, expire }
 })
 
 /**

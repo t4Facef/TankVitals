@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { demoAccessRequest } from '../api/auth'
 import { ApiError } from '../api/http'
 import BrandMark from '../components/BrandMark.vue'
 import { MOCK } from '../config'
 import { MOCK_USERNAMES } from '../mock/auth'
-import { useAuthStore } from '../stores/auth'
+import { ROLE_LABEL, type Role, useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
 const route = useRoute()
@@ -57,6 +58,34 @@ function quickLogin(name: string) {
   password.value = 'mock'
   void submit()
 }
+
+// Acesso rápido de demonstração: os botões só aparecem se o servidor estiver
+// com DEMO_QUICK_LOGIN ligado. Se a consulta falhar, a tela fica só com o formulário.
+const demoRoles = ref<Role[]>([])
+
+onMounted(async () => {
+  if (MOCK) return
+  try {
+    const access = await demoAccessRequest()
+    demoRoles.value = access.enabled ? access.roles : []
+  } catch {
+    demoRoles.value = []
+  }
+})
+
+async function demoLogin(asRole: Role) {
+  if (loading.value) return
+  error.value = null
+  loading.value = true
+  try {
+    await auth.demoLogin(asRole)
+    await router.replace(redirectTarget.value)
+  } catch (err) {
+    error.value = loginErrorMessage(err)
+  } finally {
+    loading.value = false
+  }
+}
 </script>
 
 <template>
@@ -102,10 +131,25 @@ function quickLogin(name: string) {
       </div>
 
       <div v-if="MOCK" class="login-mock">
-        <p>Modo simulado: o backend ainda não tem login (BACK-03). Entre com um dos papéis de teste:</p>
+        <p>Modo simulado: entre com um dos papéis de teste.</p>
         <div class="login-mock-users">
           <button v-for="name in MOCK_USERNAMES" :key="name" type="button" @click="quickLogin(name)">
             {{ name }}
+          </button>
+        </div>
+      </div>
+
+      <div v-if="demoRoles.length" class="login-mock">
+        <p>Acesso rápido de demonstração, sem senha:</p>
+        <div class="login-mock-users">
+          <button
+            v-for="demoRole in demoRoles"
+            :key="demoRole"
+            type="button"
+            :disabled="loading"
+            @click="demoLogin(demoRole)"
+          >
+            {{ ROLE_LABEL[demoRole] }}
           </button>
         </div>
       </div>
