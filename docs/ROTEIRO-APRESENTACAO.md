@@ -41,7 +41,7 @@ docker compose up -d
 docker compose ps
 ```
 
-**Deve aparecer:** 14 serviços `Up (healthy)`: api, frontend, gateway, inference, influxdb, mosquitto, ollama, pgadmin, postgres, rabbitmq, rules, simulator, worker e writer. Os de preparação (`token-bootstrap`, `migrate` e `ollama-init`) aparecem como `Exited (0)` com `docker compose ps -a`: eles rodam uma vez e terminam.
+**Deve aparecer:** 14 serviços `Up (healthy)`: api, frontend, gateway, inference, influxdb, mosquitto, ollama, pgadmin, postgres, rabbitmq, rules, simulator, worker e writer. Os 3 de preparação (`token-bootstrap`, `migrate` e `ollama-init`) ficam `Exited (0)`: rodam uma vez na subida e terminam, e o 0 quer dizer que deu certo. Só é problema se algum terminar com outro número.
 
 **Se não aparecer:** `docker compose logs <serviço>` e `docker compose restart <serviço>`.
 
