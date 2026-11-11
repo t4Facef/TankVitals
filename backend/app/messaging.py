@@ -187,12 +187,12 @@ async def login(request: FastAPIRequest):
             values = await request.json()
             username, password = values.get('username', ''), values.get('password', '')
         except (ValueError, AttributeError):
-            raise HTTPException(400, 'Credenciais invÃ¡lidas') from None
+            raise HTTPException(400, 'Credenciais inválidas') from None
     else:
         values = parse_qs((await request.body()).decode('utf-8', errors='replace'), max_num_fields=8)
         username, password = values.get('username', [''])[0], values.get('password', [''])[0]
     if not isinstance(username, str) or not isinstance(password, str) or len(username) > 120:
-        raise HTTPException(400, 'Credenciais invÃ¡lidas')
+        raise HTTPException(400, 'Credenciais inválidas')
     return await asyncio.to_thread(authenticate, engine(request), username.strip().lower(), password)
 
 
@@ -219,12 +219,12 @@ async def demo_access_login(request: FastAPIRequest):
 async def messaging(request: FastAPIRequest, user=Depends(current_user)):
     monitor = getattr(request.app.state, "messaging_monitor", None)
     if monitor is None:
-        raise HTTPException(503, "Monitoramento RabbitMQ indisponÃ­vel")
+        raise HTTPException(503, "Monitoramento RabbitMQ indisponível")
     try:
         return await monitor.snapshot()
     except Exception:
         logger.exception("Could not build RabbitMQ messaging snapshot")
-        raise HTTPException(503, "MÃ©tricas RabbitMQ indisponÃ­veis") from None
+        raise HTTPException(503, "Métricas RabbitMQ indisponíveis") from None
 
 
 @router.post("/ws/ticket")
