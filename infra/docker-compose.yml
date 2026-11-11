@@ -177,6 +177,7 @@ services:
       RABBITMQ_API_PASSWORD: ${RABBITMQ_API_PASSWORD:?Missing RabbitMQ API password}
       JWT_SECRET: ${JWT_SECRET_KEY:?Missing generated JWT secret}
       JWT_TTL_MINUTES: ${JWT_TTL_MINUTES:-120}
+      DEMO_QUICK_LOGIN: ${DEMO_QUICK_LOGIN:-false}
       DEMO_VIEWER_PASSWORD: ${DEMO_VIEWER_PASSWORD:?Missing generated viewer password}
       DEMO_OPERATOR_PASSWORD: ${DEMO_OPERATOR_PASSWORD:?Missing generated operator password}
       DEMO_ADMIN_PASSWORD: ${DEMO_ADMIN_PASSWORD:?Missing generated admin password}

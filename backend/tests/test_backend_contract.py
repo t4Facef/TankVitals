@@ -167,3 +167,21 @@ def test_device_fields_keep_the_equipment_order(registry):
     listed = {d['id']: [f['key'] for f in d['fields']] for d in registry.client.get('/api/devices').json()}
     for d in DEVICES:
         assert listed[d.id] == [k for k, _ in d.fields if k not in ('on', 'running')]
+
+def test_demo_quick_login_is_off_by_default(registry):
+    assert registry.client.get('/api/auth/demo').json() == {'enabled': False, 'roles': []}
+    assert registry.client.post('/api/auth/demo-login', json={'role': 'admin'}).status_code == 404
+
+def test_demo_quick_login_enters_each_role_and_is_audited(registry, monkeypatch):
+    import jwt
+    monkeypatch.setenv('DEMO_QUICK_LOGIN', 'true')
+    assert registry.client.get('/api/auth/demo').json() == {'enabled': True, 'roles': ['viewer', 'operator', 'admin']}
+    for role in ('viewer', 'operator', 'admin'):
+        response = registry.client.post('/api/auth/demo-login', json={'role': role})
+        assert response.status_code == 200
+        claims = jwt.decode(response.json()['access_token'], options={'verify_signature': False})
+        assert (claims['sub'], claims['role']) == (role, role)
+    assert registry.client.post('/api/auth/demo-login', json={'role': 'root'}).status_code == 422
+    with registry.engine.connect() as conn:
+        actions = [row.action for row in conn.execute(select(audit)).fetchall()]
+    assert actions.count('login_demo') == 3

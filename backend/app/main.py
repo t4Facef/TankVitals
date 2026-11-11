@@ -19,9 +19,11 @@ from fastapi.security import HTTPAuthorizationCredentials
 
 logger = logging.getLogger(__name__)
 
-# Abrem sem login: a saúde (healthcheck), o próprio login e a documentação. As
+# Abrem sem login: a saúde (healthcheck), o próprio login, o acesso rápido de
+# demonstração (que responde 404 se estiver desligado) e a documentação. As
 # rotas listadas na documentação continuam exigindo o token (botão Authorize).
-PUBLIC_PATHS = {"/api/health", "/api/auth/login", "/api/docs", "/api/openapi.json"}
+PUBLIC_PATHS = {"/api/health", "/api/auth/login", "/api/auth/demo", "/api/auth/demo-login",
+                "/api/docs", "/api/openapi.json"}
 
 
 def create_app(repo_factory=InfluxRepository, ingestor_factory=MqttIngestor) -> FastAPI:

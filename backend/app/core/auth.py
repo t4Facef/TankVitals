@@ -50,6 +50,37 @@ def authenticate(engine, username, password):
                     failures=failures, locked_until=stamp + timedelta(minutes=5) if failures >= 5 else None))
             log(conn, username, 'login', 'login' if valid else 'login_failed', ok=valid)
             if valid:
-                return {'access_token': jwt.encode({'sub': username, 'role': row['role'], 'iat': stamp,
-                        'exp': stamp + token_ttl()}, secret, algorithm='HS256'), 'token_type':'bearer'}
+                return issue_token(username, row['role'], stamp, secret)
     raise HTTPException(status, 'Muitas tentativas' if status == 429 else 'Usuário ou senha inválidos')
+
+def issue_token(username, role, stamp, secret):
+    return {'access_token': jwt.encode({'sub': username, 'role': role, 'iat': stamp, 'exp': stamp + token_ttl()},
+                                       secret, algorithm='HS256'), 'token_type': 'bearer'}
+
+DEMO_ROLES = ('viewer', 'operator', 'admin')
+
+def demo_quick_login_enabled():
+    """Acesso rápido de demonstração: desligado, a menos que DEMO_QUICK_LOGIN esteja ligado no servidor."""
+    return os.environ.get('DEMO_QUICK_LOGIN', '').strip().lower() in ('1', 'true', 'yes', 'sim')
+
+def demo_login(engine, role):
+    """Entra como o usuário de demonstração do papel, sem senha.
+
+    Existe para testar e apresentar sem digitar as senhas geradas. Só responde com
+    DEMO_QUICK_LOGIN ligado (fora disso, 404), só serve aos três usuários de
+    demonstração e cada entrada fica na auditoria como login_demo.
+    """
+    if not demo_quick_login_enabled():
+        raise HTTPException(404, 'Not Found')
+    secret = os.environ.get('JWT_SECRET')
+    if not secret:
+        raise HTTPException(503, 'Autenticação não configurada')
+    if role not in DEMO_ROLES:
+        raise HTTPException(422, 'Papel inválido')
+    with engine.begin() as conn:
+        row = conn.execute(select(users).where(users.c.username == role)).mappings().first()
+        if not row or not row['active'] or row['role'] != role:
+            raise HTTPException(404, 'Usuário de demonstração não encontrado')
+        stamp = now()
+        log(conn, role, 'login', 'login_demo', ok=True)
+        return issue_token(role, role, stamp, secret)

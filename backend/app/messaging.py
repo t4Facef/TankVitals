@@ -196,6 +196,25 @@ async def login(request: FastAPIRequest):
     return await asyncio.to_thread(authenticate, engine(request), username.strip().lower(), password)
 
 
+@router.get("/auth/demo")
+async def demo_access():
+    """Diz à tela de login se o acesso rápido de demonstração está ligado (DEMO_QUICK_LOGIN)."""
+    from app.core.auth import DEMO_ROLES, demo_quick_login_enabled
+    enabled = demo_quick_login_enabled()
+    return {'enabled': enabled, 'roles': list(DEMO_ROLES) if enabled else []}
+
+
+@router.post("/auth/demo-login")
+async def demo_access_login(request: FastAPIRequest):
+    from app.catalog_api import engine
+    from app.core.auth import demo_login
+    try:
+        role = (await request.json()).get('role', '')
+    except (ValueError, AttributeError):
+        raise HTTPException(400, 'Pedido inválido') from None
+    return await asyncio.to_thread(demo_login, engine(request), str(role))
+
+
 @router.get("/messaging")
 async def messaging(request: FastAPIRequest, user=Depends(current_user)):
     monitor = getattr(request.app.state, "messaging_monitor", None)
