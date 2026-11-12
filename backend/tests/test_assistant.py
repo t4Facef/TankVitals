@@ -134,8 +134,31 @@ def test_context_order_missing_sources_and_prompt():
     assert 'rul_h' in text and 'mae' in text
     repo.alerts = lambda: (_ for _ in ()).throw(RuntimeError('secret password'))
     text = build_messages(repo, 'Alertas?')[1]['content']
-    assert '"open_alerts": {"unavailable": true}' in text
+    assert '"open_alerts":{"unavailable":true}' in text
     assert 'secret password' not in text
+
+
+def test_context_keeps_fixed_text_first_and_data_compact():
+    from datetime import timezone
+    repo = Repo()
+    stamp = datetime(2026, 11, 16, 12, 0, 5, tzinfo=timezone.utc)
+    old = datetime(2026, 11, 16, 11, 50, 0, tzinfo=timezone.utc)
+    repo.readings = lambda measurement: [{'device': 'od-01', 'values': {'oxygen_mg_l': 6.812345},
+                                          'timestamps': {'oxygen_mg_l': stamp}},
+                                         {'device': 'ph-01', 'values': {'ph': 7.2}, 'timestamps': {'ph': old}}]
+    repo.training = lambda: {'version': 'v3', 'validation': {'grande': 1},
+                             'metrics': {'health_true': {'model': {'mae': 4.16789}, 'baseline': {'mae': 21.98759}}}}
+    first, second = build_messages(repo, 'Oi'), build_messages(repo, 'Outra pergunta')
+    # O começo fixo (regras e arquitetura) é idêntico entre perguntas, para o Ollama reaproveitar.
+    assert first[0] == second[0] and 'ARQUITETURA' in first[0]['content']
+    text = first[1]['content']
+    assert 'architecture' not in text and 'validation' not in text
+    assert '"oxygen_mg_l":6.81' in text and '"at":"2026-11-16 12:00:05 UTC"' in text
+    assert '"mae":4.17' in text and '"mae":21.99' in text
+    # Um horário por bloco; só o dispositivo atrasado leva o próprio.
+    assert '"od-01":{"oxygen_mg_l":6.81}' in text and '"ph-01":{"ph":7.2,"at":"2026-11-16 11:50:00 UTC"}' in text
+    # O estável vem antes do que muda a cada segundo, e a pergunta fica no fim.
+    assert text.index('latest_training') < text.index('latest_readings') < text.index('collected_at') < text.index('PERGUNTA')
 
 
 def test_audit_database_contract_and_open_alerts():

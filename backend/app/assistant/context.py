@@ -27,6 +27,9 @@ Three.js. Rules avalia limites; worker gera dados e treina regressões de saúde
 vida útil; inference aplica os modelos. Ollama executa o LLM localmente, sem
 chave de API ou nuvem. O backend monta este resumo; o LLM não acessa bancos.
 Essa é a arquitetura projetada, não uma confirmação de serviços em execução."""
+# Começo fixo de toda conversa. Precisa ser idêntico em cada pergunta e no
+# aquecimento (init_model) para o Ollama reaproveitar o que já leu.
+SYSTEM_MESSAGE = SYSTEM_PROMPT + '\nARQUITETURA:\n' + ARCHITECTURE
 
 
 class ContextRepository:
@@ -83,14 +86,78 @@ class ContextRepository:
                          detail=coerce(table, 'detail', {'question': question, 'reason': reason})))
 
 
+def _number(value):
+    return round(value, 2) if isinstance(value, float) else value
+
+
+def _time(value):
+    if isinstance(value, datetime):
+        return value.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+    return value
+
+
+STALE_AFTER_S = 60
+
+
+def _compact_readings(rows):
+    """Um horário só para o bloco (o mais recente) e valores arredondados.
+
+    Em CPU o modelo lê o prompt a poucas dezenas de tokens por segundo: um horário
+    por campo e casas decimais demais custavam dezenas de segundos por pergunta.
+    Só o dispositivo atrasado (mais de 60 s) leva o próprio horário, para o modelo
+    ainda perceber uma leitura antiga.
+    """
+    newest = {row['device']: max((s for s in row.get('timestamps', {}).values() if s is not None), default=None)
+              for row in rows}
+    stamps = [stamp for stamp in newest.values() if isinstance(stamp, datetime)]
+    latest = max(stamps) if stamps else None
+    devices = {}
+    for row in rows:
+        entry = {key: _number(value) for key, value in row['values'].items()}
+        stamp = newest[row['device']]
+        if isinstance(stamp, datetime) and latest and (latest - stamp).total_seconds() > STALE_AFTER_S:
+            entry['at'] = _time(stamp)
+        devices[row['device']] = entry
+    return {'at': _time(latest), 'devices': devices}
+
+
+def _compact_alerts(rows):
+    return [{'device': row.get('device_id'), 'level': row.get('level'), 'message': row.get('message'),
+             'value': _number(row.get('value')), 'opened_at': _time(row.get('opened_at'))} for row in rows]
+
+
+def _compact_metrics(metrics):
+    """Só o que o usuário entende: MAE, RMSE e R² do modelo e da base, por alvo."""
+    if not isinstance(metrics, dict):
+        return metrics
+    compact = {}
+    for target, values in metrics.items():
+        if isinstance(values, dict) and 'model' in values:
+            compact[target] = {side: {key: _number(number) for key, number in values[side].items()}
+                               for side in ('model', 'baseline') if isinstance(values.get(side), dict)}
+        else:
+            compact[target] = values
+    return compact
+
+
+def _compact_training(training):
+    rows = training if isinstance(training, list) else [training]
+    compact = [{key: (_compact_metrics(value) if key in ('metrics', 'baseline') else _time(value))
+                for key, value in row.items() if key != 'validation'} for row in rows if isinstance(row, dict)]
+    return compact if isinstance(training, list) else (compact[0] if compact else training)
+
+
 def build_messages(repo, question):
-    summary = {'collected_at': datetime.now(timezone.utc).isoformat(),
-               'architecture': ARCHITECTURE,
-               'scope': 'Últimas 24 h; até 300 campos, 30 alertas e 2 modelos. Listas podem ser parciais.'}
-    sources = {'latest_readings': lambda: repo.readings('telemetry'),
-               'pumps_by_health': lambda: sorted(repo.readings('insight'),
-                    key=lambda row: row['values'].get('health', float('inf'))),
-               'open_alerts': repo.alerts, 'latest_training': repo.training}
+    # O Ollama reaproveita o começo do prompt que se repete entre perguntas e só lê
+    # de novo o que mudou. Então a ordem vai do mais estável ao que muda sempre:
+    # regras e arquitetura (mensagem do sistema), escopo, treino e alertas, e por
+    # último as leituras, o horário da coleta e a pergunta.
+    summary = {'scope': 'Últimas 24 h; até 300 campos, 30 alertas e 2 modelos. Listas podem ser parciais.'}
+    sources = {'latest_training': lambda: _compact_training(repo.training()),
+               'open_alerts': lambda: _compact_alerts(repo.alerts()),
+               'pumps_by_health': lambda: _compact_readings(sorted(repo.readings('insight'),
+                    key=lambda row: row['values'].get('health', float('inf')))),
+               'latest_readings': lambda: _compact_readings(repo.readings('telemetry'))}
     for key, read in sources.items():
         try:
             summary[key] = read()
@@ -101,6 +168,8 @@ def build_messages(repo, question):
     for key in sources:
         if len(json.dumps(summary[key], default=str)) > 6500:
             summary[key] = {'unavailable': True, 'reason': 'Resumo excede o limite; consulte a tela específica.'}
-    return [{'role': 'system', 'content': SYSTEM_PROMPT},
-            {'role': 'user', 'content': 'RESUMO (dados):\n' + json.dumps(summary, ensure_ascii=False, default=str)
+    summary['collected_at'] = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+    return [{'role': 'system', 'content': SYSTEM_MESSAGE},
+            {'role': 'user', 'content': 'RESUMO (dados):\n'
+             + json.dumps(summary, ensure_ascii=False, default=str, separators=(',', ':'))
              + '\nPERGUNTA:\n' + question}]

@@ -28,7 +28,11 @@ def main():
         result = call('/api/pull', {'model': model, 'stream': False})
         if result.get('error'):
             raise RuntimeError(result['error'])
-    result = call('/api/chat', {'model': model, 'messages': [{'role': 'user', 'content': 'Responda: pronto.'}],
+    # Aquece com a mesma mensagem de sistema do assistente: o Ollama guarda esse
+    # começo já lido, e a primeira pergunta de verdade só processa os dados dela.
+    from app.assistant.context import SYSTEM_MESSAGE
+    result = call('/api/chat', {'model': model, 'messages': [{'role': 'system', 'content': SYSTEM_MESSAGE},
+                                                             {'role': 'user', 'content': 'Responda: pronto.'}],
                               'stream': False, 'keep_alive': -1, 'options': {'num_ctx': 8192, 'num_predict': 8}})
     if not result.get('done') or result.get('error'):
         raise RuntimeError('Falha ao aquecer modelo')
