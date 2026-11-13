@@ -1,5 +1,7 @@
 # TankVitals
 
+Luciano Neves Mazarão Júnior, Igor Gabriel Carloni Barcelos, Pedro de Oliveira Bertoni, Eduardo Elias Colombari e João Pedro Lourenço Ferreira
+
 **Monitoramento IoT de tanque de aquicultura / aquário em tempo real.**
 
 Projeto da disciplina **Web II — UniFACEF 2026 — 1º Bimestre**.
